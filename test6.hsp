@@ -1,0 +1,11 @@
+
+repeat 
+
+cls
+
+stick key
+mes key
+wait 10
+
+loop
+stop

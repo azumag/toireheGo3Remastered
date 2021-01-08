@@ -1,0 +1,499 @@
+
+;============================================================
+;                                                 2005/08/--
+;	S.Programs d3module 1.50 beta 3
+;	wireframe renderer for HSP 3.0
+;                               http://sprocket.babyblue.jp/
+;============================================================
+
+#module "d3m"
+
+
+;===========================================================
+;	数学モジュール
+;===========================================================
+
+
+; 平面座標回転 (vx, vy,  x, y,  a)
+;-----------------------------------------------------------
+#deffunc d3rotate var v01, var v02, double v03, double v04, double v05
+
+	v01 = v03 * cos(v05) - v04 * sin(v05)
+	v02 = v03 * sin(v05) + v04 * cos(v05)
+
+	return
+
+
+; 2 点間の距離を求める (x, y, z)
+;-----------------------------------------------------------
+#define global ctype d3dist(%1,%2=0,%3=0)  sqrt((%1) * (%1) + (%2) * (%2) + (%3) * (%3))
+
+
+
+;===========================================================
+;	3D 制御モジュール
+;===========================================================
+
+
+; 座標変換パラメータ設定 (cx, cy, cz,  tx, ty, tz)
+;-----------------------------------------------------------
+#deffunc d3setcamx double ssx, double ssy, double ssz,  double ppx, double ppy, double ppz
+
+	; カメラ座標設定
+	cpx = ssx
+	cpy = ssy
+	cpz = ssz
+
+	; カメラ方向三角比計算
+	ax = cpx - ppx
+	ay = cpy - ppy
+	az = cpz - ppz
+
+	bx = d3dist(ax, ay)
+	by = d3dist(ax, ay, az)
+
+	if bx ! 0.0 {
+		cosXY = ay / bx
+		sinXY = ax / bx
+	}
+	if by ! 0.0 {
+		cosAZ = -bx / by
+		sinAZ = az / by
+	}
+
+	; その他パラメータ設定
+	wincx = 0.0 + ginfo_winx / 2
+	wincy = 0.0 + ginfo_winy / 2
+	zoom  = 0.1 + ginfo_winy
+
+	; 座標変換結果を stat に返すようにする
+	mref df, 64
+
+	return
+
+
+; 座標変換パラメータ設定 (cx, cy, cz,  tx, ty, tz)  パラメータ省略用マクロ
+;-----------------------------------------------------------
+#define global d3setcam(%1, %2, %3, %4=0, %5=0, %6=0)  d3setcamx %1, %2, %3, %4, %5, %6
+
+
+; 座標変換 macro (inx, iny, inz,  oux, ouy, ouz, ouf)
+;-----------------------------------------------------------
+#define d3trans(%1, %2, %3,  %4=dx, %5=dy, %6=dz, %7=df) \
+\
+	vx=(%1)-cpx : vy=(%2)-cpy : vz=(%3)-cpz : \
+\
+	%5 = vx * sinXY + vy * cosXY : \
+	%6 = (%5 * cosAZ - vz * sinAZ) / zoom : \
+\
+	%7 = (%6 > 0.05) : \
+\
+	if %7 { \
+		%4 = wincx + (vy * sinXY - vx * cosXY) / %6 : \
+		%5 = wincy + (%5 * sinAZ + vz * cosAZ) / %6 \
+	}
+
+
+; 座標変換 OLD (x, y, z) -> dx, dy, dz, df [local]
+;-----------------------------------------------------------
+;#define d3trans(%1, %2, %3)  vx=(%1)-cpx : vy=(%2)-cpy : vz=(%3)-cpz : gosub *d3transfm
+;*d3transfm
+;
+;	dy = vx * sinXY + vy * cosXY
+;	dz = (dy * cosAZ - vz * sinAZ) / zoom
+;
+;	df = (dz > 0.05) ; 座標変換範囲内?
+;
+;	if df {
+;		dx = wincx + (vy * sinXY - vx * cosXY) / dz
+;		dy = wincy + (dy * sinAZ + vz * cosAZ) / dz
+;	}
+;	return
+
+
+; 座標変換を行う (x, y, z)
+;-----------------------------------------------------------
+#deffunc d3transx  double v01, double v02, double v03
+
+	d3trans v01, v02, v03
+
+	return
+
+
+; 座標変換結果を返す (vx, vy,  x, y, z)
+;-----------------------------------------------------------
+#define global d3getpos(%1, %2, %3=0, %4=0, %5=0)  d3transx %3, %4, %5 : if df@d3m { %1 = dx@d3m : %2 = dy@d3m }
+
+
+; 点を描画 (x, y, z)
+;-----------------------------------------------------------
+#define global d3pset(%1=0, %2=0, %3=0)  d3transx %1, %2, %3 : if df@d3m { pset dx@d3m, dy@d3m }
+
+
+; カレントポジション移動 (x, y, z)
+;-----------------------------------------------------------
+#define global d3pos(%1=0, %2=0, %3=0)  d3transx %1, %2, %3 : if df@d3m { pos dx@d3m, dy@d3m }
+
+
+
+;===========================================================
+;	基本描画モジュール
+;===========================================================
+
+; memo : 描画命令実行後は前回描画情報 dx, dy, dz, df を必ず保持する
+
+
+; ライン描画 (x1, y1, z1,  x2, y2, z2) / クリッピングあり
+;-----------------------------------------------------------
+#deffunc d3line double ppx, double ppy, double ppz,  double ssx, double ssy, double ssz
+
+	d3trans ppx, ppy, ppz,  dx, dy, dz, df
+	d3trans ssx, ssy, ssz,  ex, ey, ez, ef
+
+	; クリップ不要
+	if df & ef {
+		line dx, dy, ex, ey
+		return
+	}
+
+	; 二分探索でクリッピング
+	if df | ef {
+		if df {
+			pos dx, dy
+			ax = ppx : ay = ppy : az = ppz
+			bx = ssx : by = ssy : bz = ssz
+		} else {
+			pos ex, ey
+			ax = ssx : ay = ssy : az = ssz
+			bx = ppx : by = ppy : bz = ppz
+		}
+		repeat 10
+			cx = (ax + bx) / 2
+			cy = (ay + by) / 2
+			cz = (az + bz) / 2
+			d3trans cx, cy, cz,  ex, ey, ez, af
+			if af {
+				ax = cx : ay = cy : az = cz
+				line ex, ey
+			} else {
+				bx = cx : by = cy : bz = cz
+			}
+		loop
+	}
+
+	return
+
+
+; 矢印を描画 (x1, y1, z1,  x2, y2, z2)
+;-----------------------------------------------------------
+#deffunc d3arrow double v11, double v12, double v13,  double v14, double v15, double v16
+
+	d3line v11, v12, v13,  v14, v15, v16
+
+	if df & ef {
+		; pos
+		d3trans (v11 * 9 + v14) / 10, (v12 * 9 + v15) / 10, (v13 * 9 + v16) / 10,  ax, ay, az, af
+
+		; size of arrow
+		a = atan(dy-ey, dx-ex)
+		r = d3dist(v11-v14, v12-v15, v13-v16) / az / 30
+		bx = cos(a) * r
+		by = sin(a) * r
+
+		; draw
+		line dx, dy,  ax - by, ay + bx
+		line dx, dy,  ax + by, ay - bx
+	}
+
+	return
+
+
+; ボックスを描画 (x1, y1, z1,  x2, y2, z2)
+;-----------------------------------------------------------
+#deffunc d3box double v11, double v12, double v13,  double v14, double v15, double v16
+
+	d3line v11, v12, v13,  v14, v12, v13
+	d3line v11, v15, v13,  v14, v15, v13
+	d3line v11, v15, v16,  v14, v15, v16
+	d3line v11, v12, v13,  v11, v12, v16
+	d3line v11, v15, v13,  v11, v12, v13
+	d3line v11, v15, v16,  v11, v15, v13
+	d3line v11, v12, v16,  v11, v15, v16
+	d3line v14, v12, v16,  v11, v12, v16
+	d3line v14, v15, v13,  v14, v15, v16
+	d3line v14, v12, v13,  v14, v15, v13
+	d3line v14, v12, v16,  v14, v12, v13
+	d3line v14, v15, v16,  v14, v12, v16
+
+	return
+
+
+; 円を描画 (x, y, z,  r,  flg)
+;-----------------------------------------------------------
+#deffunc d3circle double v01, double v02, double v03, double v04, int v05
+
+	d3trans v01, v02, v03
+
+	if df {
+		r = v04 / dz
+		circle dx - r, dy - r, dx + r, dy + r, v05
+	}
+	return
+
+
+; 文字列を表示 (str,  x, y, z)
+;-----------------------------------------------------------
+#deffunc d3mes str pmsg, double ppx, double ppy, double ppz
+
+	d3trans ppx, ppy, ppz
+
+	if df {
+		pos 0, -32000
+		mes pmsg
+		pos dx - ginfo_mesx / 2, dy - ginfo_mesy / 2
+		mes pmsg
+	}
+	return
+
+
+; d3lineto 使用前の初期化
+;-----------------------------------------------------------
+#define global d3initlineto  df@d3m = 0
+
+
+; 連続線の描画 (x, y, z)
+;-----------------------------------------------------------
+#deffunc d3lineto double ppx, double ppy, double ppz
+
+	ex = dx
+	ey = dy
+	ef = df
+
+	d3trans ppx, ppy, ppz
+
+	if df & ef {
+		line dx, dy, ex, ey
+	}
+	return
+
+
+
+;===========================================================
+;	パーティクル描画モジュール
+;===========================================================
+
+#const	SCR_PTC	29	; パーティクル用スクリーン ID (1.4MB)
+#const	MAX_PID	32	; パーティクル ID 数
+#const	MAX_PTS	112	; パーティクルソースサイズ
+#const	R_CACHE	10	; 縮小キャッシュ r 上限
+#const	MAX_PM1	(MAX_PTS - 1)
+
+; R_CACHE  1 2  3  4  5  6  7  8  9  10  11  12  13  14  15  16 ; (R_CACHE + 1) * R_CACHE == MAX_PTS
+; MAX_PTS  2 6 12 20 30 42 56 72 90 110 132 156 182 210 240 272
+
+
+; パーティクル描画 (pid,  x, y, z,  r)
+;-----------------------------------------------------------
+#deffunc d3particle int ppi, double ppx, double ppy, double ppz, double ppr
+
+	d3trans ppx, ppy, ppz
+
+	if df {
+		r = int(ppr / dz)
+		if (r > 0) & (abs(dx) < 10000) & (abs(dy) < 10000) {
+			y = ppi * MAX_PTS
+
+			if r <= R_CACHE {
+
+				; 高速版 : 縮小済みキャッシュからコピー
+				pos dx - r, dy - r
+				gcopy SCR_PTC,  MAX_PTS, (r-1)*r + y, r*2, r*2
+
+			} else {
+				; 標準版 : パーティクルソースから倍変コピー
+
+				pdx = -r + dx,  r + dx,  r + dx, -r + dx
+				pdy = -r + dy, -r + dy,  r + dy,  r + dy
+
+				psx = 0,  MAX_PM1, MAX_PM1, 0
+				psy = y, y, y + MAX_PM1, y + MAX_PM1
+
+				gsquare SCR_PTC, pdx, pdy, psx, psy
+			}
+		}
+	}
+
+	return
+
+
+; パーティクル描画m (pid, r)
+;-----------------------------------------------------------
+#deffunc d3particlem int ppi, double ppr
+
+	if df {
+		r = int(ppr / dz)
+		if (r > 0) & (abs(dx) < 10000) & (abs(dy) < 10000) {
+			y = ppi * MAX_PTS
+
+			if r <= R_CACHE {
+
+				; 高速版 : 縮小済みキャッシュからコピー
+				pos dx - r, dy - r
+				gcopy SCR_PTC,  MAX_PTS, (r-1)*r + y, r*2, r*2
+
+			} else {
+				; 標準版 : パーティクルソースから倍変コピー
+
+				pdx = -r + dx,  r + dx,  r + dx, -r + dx
+				pdy = -r + dy, -r + dy,  r + dy,  r + dy
+
+				psx = 0,  MAX_PM1, MAX_PM1, 0
+				psy = y, y, y + MAX_PM1, y + MAX_PM1
+
+				gsquare SCR_PTC, pdx, pdy, psx, psy
+			}
+		}
+	}
+
+	return
+
+
+; パーティクル画像作成 (pid,  p2, p3, p4, p5, p6)
+;-----------------------------------------------------------
+#deffunc d3createptc int ppi, int v02, int v03, int v04, int v05, int v06
+
+	; wid original
+	b = ginfo_sel
+
+
+	; パーティクル用スクリーン作成
+	if ptc_inited ! 100 {
+		buffer SCR_PTC, MAX_PTS + R_CACHE * 2, MAX_PTS * MAX_PID
+		ptc_inited = 100
+	} else {
+		gsel SCR_PTC
+	}
+	y = MAX_PTS * ppi
+
+
+	; (パラメータによって動作分け)
+	if v05 {
+
+		; パーティクル画像ロード
+		pos 0, y
+		gzoom MAX_PTS, MAX_PTS, v02, v03, v04, v05, v06, 1
+
+	} else {
+
+		; パーティクル画像作成
+		a = MAX_PTS / 2
+		color
+		boxf , y, , y + MAX_PM1
+		repeat a
+			f = 1.0 + cnt
+
+		;	f = f / a			; linear
+		;	f = f * f / a / a		; parabola
+			f = f * (f + a) / a / a / 2	; blend
+
+			color f * v02, f * v03, f * v04
+			circle cnt, y + cnt, MAX_PTS - cnt, y + MAX_PTS - cnt
+		loop
+	}
+
+
+	; 高速化用 縮小済みキャッシュ作成
+	repeat R_CACHE, 1
+		r = cnt
+		pos MAX_PTS, (r-1)*r + y
+		gzoom r*2, r*2,  SCR_PTC,  0, y, MAX_PTS, MAX_PTS,  1
+	loop
+
+
+	; 描画先を戻す
+	gsel b
+
+	return
+
+
+; 球状パーティクル作成 (pid,  r, g, b)
+;-----------------------------------------------------------
+#define global d3mkparticle(%1, %2, %3, %4)  d3createptc %1, %2, %3, %4
+
+
+; パーティクル画像ロード (pid,  sid,  x, y, w, h)
+;-----------------------------------------------------------
+#define global d3ldparticle(%1, %2, %3, %4, %5, %6)  d3createptc %1, %2, %3, %4, %5, %6
+
+
+
+;===========================================================
+;	平面描画モジュール
+;===========================================================
+
+
+; 四角い平面に画像を貼り付け (x-ary, y-ary, z-ary,  wid,  x, y, w, h)
+;-----------------------------------------------------------
+#deffunc d3texture array aryx, array aryy, array aryz, int ppi, int ppx, int ppy, int ppw, int pph
+
+	; 4 隅を座標変換
+	repeat 4
+		d3trans double( aryx(cnt) ), double( aryy(cnt) ), double( aryz(cnt) )
+
+		; 描画化け防止
+		if abs(dx) > 30000 | abs(dy) > 30000 : df = 0
+
+		if df = 0 : break ; 座標変換範囲外
+
+		pdx(cnt) = int( dx )
+		pdy(cnt) = int( dy )
+	loop
+
+	if df {
+		if ppi >= 0 {
+			psx = ppx, ppx+ppw-1, ppx+ppw-1, ppx
+			psy = ppy, ppy,       ppy+pph-1, ppy+pph-1
+			gsquare ppi, pdx, pdy, psx, psy
+		} else {
+			gsquare ppi, pdx, pdy
+		}
+	}
+
+	return
+
+
+; 四角い平面を塗りつぶし描画 (x-ary, y-ary, z-ary)
+;-----------------------------------------------------------
+#define global d3square(%1, %2, %3, %4=-1, %5, %6, %7, %8)  d3texture %1, %2, %3, %4, %5, %6, %7, %8
+
+
+
+;===========================================================
+;	タイマー機能モジュール
+;===========================================================
+
+
+; ms タイマー
+;-----------------------------------------------------------
+#uselib "winmm.dll"
+#cfunc global d3timer "timeGetTime"
+
+
+; fps 取得
+;-----------------------------------------------------------
+#defcfunc d3getfps
+
+	a = d3timer() / 500
+	fpss(   a  & 7)++
+	fpss((a+1) & 7) = 0
+	fpss((a+2) & 7) = 0
+
+	return fpss((a-1) & 7) + fpss((a-2) & 7)
+
+
+
+#global
+
+	; init
+	dim fpss@d3m, 8
+	d3setcam -1000, 0, 0

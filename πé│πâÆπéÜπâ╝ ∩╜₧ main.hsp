@@ -1,0 +1,733 @@
+#include "hspda.as"
+
+goto *top
+
+#deffunc nuru int colors
+		
+	color colors,colors,colors
+	boxf 0,0,440,440
+		
+return
+
+*top	
+	screen 0,440,440
+	cls 
+	color 0,0,0
+	pos 0,0
+	mes "now loading"
+	
+//三角関数テーブル作成-------------------------------------------------
+	dim sina,360 : dim cosa,360	
+	cosa.0=10000 : sina.0=0
+	cosa.1=9999 : sina.1=175
+	
+	repeat 358,1
+		ent=cnt+1
+		cosa.ent=((cosa.1*cosa.cnt)-(sina.1*sina.cnt))/10000
+		sina.ent=((sina.1*cosa.cnt)+(cosa.1*sina.cnt))/10000
+	loop
+//;----------------------------------------------------------------------
+//--------弾の配列を確保--------------
+	tmax=100			;画面上の弾最大数
+	dim tx,tmax			;x座標 (1000倍で計算・固定小数点数）
+	dim ty,tmax			;y座標 (1000倍
+	dim tf,tmax			;フラグ
+	dim txv,tmax		;移動量x
+	dim tyv,tmax		;移動量y
+	dim tx2,tmax		;x座標（表示用・実際の座標）
+	dim ty2,tmax		;y座標（表示用・実際の座標)
+	dim tc,tmax			;色
+	dim te1,tmax		;enemy1のフラグ
+	dim tb1,tmax		;敵弾１のフラグ
+	dim ef,tmax			;エフェクトフラグ
+	dim tcx,tmax		;中心座標ｘ
+	dim tcy,tmax		;中心座標y
+	dim hitchklenghx,tmax	//当たり判定x
+	dim hitchklenghy,tmax	//当たり判定y
+	dim tamadis,tmax	;玉が消えるかどうかの判定
+	dim tamadisk2,tmax	;弾の消えるエフェクト
+	dim tamadisk3,tmax	;弾の消えるエフェクト
+
+	maxdansu=10
+	dim shotx,maxdansu		;x座標 (1000倍で計算・固定小数点数）
+	dim shoty,maxdansu		;y座標 (1000倍
+	dim ts,maxdansu			;フラグ
+	dim shotxv,maxdansu		;移動量x
+	dim shotyv,maxdansu		;移動量y
+	dim shotx2,maxdansu		;x座標（表示用・実際の座標）
+	dim shoty2,maxdansu		;y座標（表示用・実際の座標)
+		
+//通常変数の宣言
+
+	ket=220				//→の表示座標
+	alloc enemydate,1000//エネミーシーケンス変数宣言
+	dansu=4				//横弾数
+	life=10				//初期ライフ
+	drawhantei=1		//判定を描画
+	sp=1				//弾速
+	
+
+//バッファにキャラ画像読み込み
+
+	buffer 3,,,
+	picload "mychar.bmp",1
+	buffer 4,,,
+	picload "zako.gif",1
+	buffer 5,,,
+	picload "alltama.bmp",1
+	buffer 6,,,
+	picload "haikei.gif",1
+
+//バッファに音楽データ読み込み
+
+	mmload "stage01.mid",1
+	mmload "bom.wav",2
+	mmload "zasizasi.wav",3
+
+//タイトル画面
+
+	gsel 0
+	
+	
+*titleloop
+	
+	redraw 2
+	
+	nuru 255		//画面を塗る
+	
+	color 0,0,0
+	font "MS ゴシック",20
+	pos 100,100
+	mes "トイレへＧＯ３"
+	
+	gmode 2,42,51,
+	pos 100,120:gcopy 3,0,50,42,51
+	font "MS ゴシック",16:color 255,0,0
+	pos 200,220:mes " Play "
+	pos 200,240:mes " Exit "
+	pos 180,ket:mes "→ "
+
+	gosub *key
+	
+	redraw 1
+	await 1
+
+	if kettei=1:goto *sento
+	
+	goto *titleloop
+
+*key
+
+	stick keyin
+
+	if keyin&8:ket=240:menu=1
+	if keyin&2:ket=220:menu=0
+	if keyin&36:kettei=1
+
+	return
+	
+*sento
+	//ステージ数によって初期化
+	if menu=1:goto *exit
+
+	cls
+	mes "Now loading"
+	
+	//mmplay 1
+	
+	mx=160:my=300
+	mapy=0:mapy2=-437
+	stagenum=1
+
+
+	//エネミーシーケンス読み込み
+	//enemyline.cntに１行ずつ読み込む
+	bload "stage"+stagenum+".dat",enemydate
+	
+	notesel enemydate
+	
+	sdim one,10,notemax
+	sdim enemyline,10,notemax	
+	csvline=""
+
+	repeat notemax
+
+		noteget one,cnt
+		csvnote csvline,one
+		enemyline.cnt=csvline
+		
+	loop
+
+	//*******************************************************************************
+	//メインループ
+*mainloop
+	redraw 2
+
+	nuru 0
+	//------背景表示-------
+	pos 0,mapy:gcopy 6,0,0,352,437
+	pos 0,mapy2:gcopy 6,0,0,352,437
+	mapy+=1:mapy2+=1
+	if mapy>=440:mapy=-430
+	if mapy2>=440:mapy2=-430
+
+	gosub *stagehyoji	//ステージ表示サブルーティン
+	gosub *status		//ステータス表示
+	gosub *keychk
+	gosub *charmain
+	gosub *shot
+	gosub *tamaido
+	gosub *enemy
+	gosub *hitchk
+
+	if mutekif=1:gosub *sindaw
+
+	if drawhantei=1{
+	color 255,0,0
+	boxf mycharcenterx,mycharcentery,mycharcenterx+mycharRightx,mycharcentery+mycharuppery
+	boxf mycharcenterx,mycharcentery,mycharcenterx+mycharRightx,mycharcentery-mycharuppery
+	boxf mycharcenterx,mycharcentery,mycharcenterx-mycharRightx,mycharcentery+mycharuppery
+	boxf mycharcenterx,mycharcentery,mycharcenterx-mycharRightx,mycharcentery-mycharuppery
+	}
+	
+	redraw 1
+	await 1
+	goto *mainloop
+*stagehyoji
+
+	if titlex>=440:return
+
+	color 255,255,255
+	pos titlex,100:font "MS ゴシック",30:mes "Stage"+stagenum
+	titlex+=1
+	
+	return
+*status
+	
+	font "MS ゴシック",16
+	color 255,255,255
+	pos 350,0:mes "Score"
+	pos 400,20:mes score
+	pos 355,40:mes "life"
+
+	pos 355,80:mes "Bom"
+	pos 355,100:mes "****"
+
+	//ライフがゼロなら表示無
+	if life<=0:return
+	repeat life
+	pos 355+5*cnt,60:mes "|"
+	loop
+
+	return
+*charmain
+
+	gmode 2,40,30,
+	pos mx,my
+	gcopy 3,0,0,40,30
+
+	
+	gmode 2,10,17
+	pos mx+1,my+10:gcopy 3,jetx2,32,10,17
+	pos mx+25,my+10:gcopy 3,jetx2,32,10,17
+
+	//自機の中心座標
+	mycharcenterx=mx+18
+	mycharcentery=my+15
+
+	mycharuppery=3
+	mycharRightx=3
+
+	if jetx2f=1:goto *tututugi
+	
+	kaunter3+=1
+	if kaunter3>=10{
+	jetx2=10
+	jetx2f=1
+	kaunter3=0
+}
+
+	return
+*tututugi
+	kaunter3+=1
+	if kaunter3>=10{
+	jetx2=0
+	jetx2f=0
+	kaunter3=0
+	}
+	return
+
+*keychk
+
+	stick keyon,2+8+4+1+16
+	
+
+	ido=4
+	if keyon&16:ido=2
+	
+	if keyon&2{
+		if my>=0:my-=ido
+	}
+	if keyon&8{
+		if my<=410:my+=ido
+	}
+	if keyon&4{
+		if mx<=310:mx+=ido
+	}
+	if keyon&1{
+		if mx>=0:mx-=ido
+	}
+
+	return
+*shot
+	if utta=1:uttakaunter+=1
+	if uttakaunter>=5:utta=0:uttakaunter=0
+	if utta=1:return
+	
+
+	repeat dansu
+		gdansu=cnt
+		
+	repeat maxdansu
+			
+		if ts.cnt>0 :continue									;空きフラグを探す
+		eh+
+		
+		//発射位置を動かし、移動方向を設定
+		if gdansu\2=0{
+			shotxmove=0
+		}else{
+			shotxmove=10
+		}
+
+		if gdansu=0:eh2=270		
+		if gdansu=1:eh2=270	
+		if gdansu=2:eh2=268
+		if gdansu=3:eh2=272
+		if gdansu=4:eh2=266
+		if gdansu=5:eh2=274
+		if gdansu=6:eh2=264
+		if gdansu=7:eh2=274
+		if gdansu=8:eh2=262
+		if gdansu=9:eh2=276
+		if gdansu=10:eh2=260
+		if gdansu=11:eh2=278
+		if gdansu=12:eh2=258
+		if gdansu=13:eh2=280
+		if gdansu=14:eh2=256
+		if gdansu=15:eh2=282
+		
+		ts.cnt=1
+	
+		shotx.cnt=(mx+14+shotxmove)*1000: shoty.cnt=my*1000		;位置に弾発生(1000倍）
+		shotxv.cnt=cosa.eh2*sp : shotyv.cnt=sina.eh2*sp			;移動方向
+
+		if eh=1 : eh=0 : break									;1発発射してループを抜ける	
+		
+	loop
+		
+	loop
+		
+		utta=1
+	return
+/*
+	if utta=1:uttakaunter+=1
+	if uttakaunter>=5:utta=0:uttakaunter=0
+	if utta=1:return
+	repeat dansu
+
+		if cnt\2=0{
+			zure=0
+		}else{
+			zure=10
+		}
+		eh2=270
+
+		if gdansu=0:eh2=270									
+		if gdansu=1:eh2=270	
+		if gdansu=2:eh2=268
+		if gdansu=3:eh2=272
+		if gdansu=4:eh2=266
+		if gdansu=5:eh2=274
+		if gdansu=6:eh2=264
+		if gdansu=7:eh2=274
+		if gdansu=8:eh2=262
+		if gdansu=9:eh2=276
+		if gdansu=10:eh2=260
+		if gdansu=11:eh2=278
+		if gdansu=12:eh2=258
+		if gdansu=13:eh2=280
+		if gdansu=14:eh2=256
+		if gdansu=15:eh2=282
+		
+		ts.gdansu=1
+		shotx.gdansu=(mx+15+zure)*1000
+		shoty.gdansu=my*1000
+
+		shotxv.gdansu=cosa.eh2*sp : shotyv.gdansu=sina.eh2*sp
+		gdansu+=1
+	loop
+		gdansu=0
+	
+	utta=1
+*/
+		
+return
+*tamaido
+
+	repeat tmax
+		if tf.cnt<1 :continue						;存在する弾だけ
+		tx.cnt+=txv.cnt : ty.cnt+=tyv.cnt			;移動処理
+		tx2.cnt=tx.cnt/1000 : ty2.cnt=ty.cnt/1000	;表示用座標を求める
+
+		//当たり判定用中心座標
+		tcx.cnt=tx2.cnt+tcplusx.cnt	:	tcy.cnt=ty2.cnt+tcplusy.cnt
+		
+		if (tx2.cnt>460)|(tx2.cnt<-22)|(ty2.cnt<-22)|(ty2.cnt>460) {
+			tf.cnt=0 
+			te1.cnt=0
+			tb1.cnt=0
+			ef.cnt=0
+
+			continue
+//--------------------------------------------------ここを、オブジェクトの種類を増やすたび追加
+		}											;画面外なら消す
+		
+		tc.cnt- : if tc.cnt<0 : tc.cnt=0			;色を暗くする
+		color tc.cnt,tc.cnt,tc.cnt
+		pos tx2.cnt-4,ty2.cnt-4
+		//もしショットなら、ショットの画像を
+/*
+		if ts.cnt=1{
+			
+			gcopy 5,0,0,2,22
+			tx3.cnt=tcx.cnt
+			ty3.cnt=tcy.cnt
+			shotatarix=2
+			shotatariy=11
+			
+		}
+*/
+		//敵なら敵画像
+		if te1.cnt=1{
+			enemytimek.cnt+=1
+			gcopy 4,0,0,32,32
+			//color 0,0,0:mes "teki"+cnt
+			
+			if enemytimek.cnt>=50{
+				enemyshotf=cnt
+
+				gosub *enemyshot1
+				
+				enemytimek.cnt=0
+				}
+				
+			}
+		
+		//敵弾１なら画像
+		if tb1.cnt=1{
+			
+			if tamadis.cnt=0{
+				gcopy 5,2,0,14,14
+			}else{
+				tamadisk.cnt+=1
+				if tamadisk.cnt>=5:tamadisk2.cnt+=1:tamadisk.cnt=0
+				tamadisk3.cnt=tamadisk2.cnt*13
+				if tamadisk2.cnt=3:tamadisk2=0:tb1.cnt=0:tamadis.cnt=0
+				gcopy 5,2+tamadisk3.cnt,0,14,14
+				
+			}
+		}
+		//エフェクトなら.表示
+		if ef.cnt=1{
+			color 0,0,0:mes "."
+		}
+		
+	loop
+
+	repeat maxdansu
+		if mutekif=1:break
+		
+		shoty.cnt+=shotyv.cnt
+		shotx.cnt+=shotxv.cnt
+		shotx2.cnt=shotx.cnt/1000
+		shoty2.cnt=shoty.cnt/1000
+		
+		pos shotx2.cnt,shoty2.cnt
+		gcopy 5,0,0,2,22
+
+		if shoty2.cnt<=-20 {
+			
+			ts.cnt=0
+			continue
+			
+		}
+		
+
+	loop
+
+	return
+
+	
+*enemy
+	//ターンに応じて配列からデータを取り込む
+	notesel enemyline.turn
+	
+	
+	noteget enemyname,0
+	
+	//エネミーネームにより処理分岐
+	if enemyname="sleep":gosub *sleeping
+	if enemyname="enemy1":gosub *enemy1
+	
+	
+	return
+*enemy1
+
+	noteget exa,1
+	noteget eya,2
+	
+	//敵発生
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2=90											;向かう角度を求める
+		tf.cnt=1										;フラグオン
+		tc.cnt=255										;色
+		
+		te1.cnt=1
+		
+		tx.cnt=int(exa)*1000 :ty.cnt=int(eya)*1000		;位置に弾発生(1000倍）
+		txv.cnt=cosa.eh2/5 : tyv.cnt=sina.eh2/5			;移動方向
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=13
+		hitchklenghy.cnt=13
+
+		//中心座標用加算変数
+		tcplusx.cnt=12
+		tcplusy.cnt=12
+		
+		if eh=1 : eh=0 : break							;1発発射してループを抜ける
+	loop
+
+	turn+=1
+	
+	return
+*enemyshot1
+
+	if mutekif=1:return
+
+	//敵の座標からの距離を計測
+	kyorx=tx2.enemyshotf-mx
+	kyory=ty2.enemyshotf-my
+	if tx2.enemyshotf>mx:hantenx=1:else:hantenx=0
+	if ty2.enemyshotf>my:hanteny=1:else:hanteny=0
+
+	//距離の絶対値をとる(0だったら＋１する）
+	kyory=abs(kyory)
+	kyorx=abs(kyorx)
+	if kyorx=0 :kyorx+=1
+	if kyory=0 :kyory+=1
+
+	//座標から自分のいる座標の角度を計算
+	zahyo=double(kyory)/double(kyorx)
+	a=atan(zahyo)
+	b=a*180/3.1415926535897932384626433832795
+	b=int(b)
+
+	if hantenx=1:b=180-b
+	if hanteny=1:b=360-b
+
+	
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2=b											;向かう角度を求める
+		tf.cnt=1										;フラグオン
+		tc.cnt=255										;色
+		
+		tb1.cnt=1										//敵球フラグ恩
+		tamadis.cnt=0
+		
+		tx.cnt=tx2.enemyshotf*1000 :ty.cnt=ty2.enemyshotf*1000		;位置に弾発生(1000倍）
+		txv.cnt=cosa.eh2/5 : tyv.cnt=sina.eh2/5			;移動方向
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=3
+		hitchklenghy.cnt=3
+
+		//中心座標用加算変数
+		tcplusx.cnt=2
+		tcplusy.cnt=2
+		
+		if eh=1 : eh=0 : break							;1発発射してループを抜ける
+	loop
+	//敵弾はtb1.cnt
+
+	return
+
+*sleeping
+
+	noteget par,1
+	par=int(par)
+
+	if kauntpar>=par{
+	kauntpar=0:turn+=1
+	}
+
+	kauntpar+=1
+	return
+	
+*hitchk
+
+	repeat tmax
+
+		yhit=0:xhit=0
+		yhit2=0:xhit2=0
+
+	if drawhantei=1{
+	color 255,0,0
+	boxf tcx.cnt,tcy.cnt,tcx.cnt+hitchklenghx.cnt,tcy.cnt+hitchklenghy.cnt
+	boxf tcx.cnt,tcy.cnt,tcx.cnt+hitchklenghx.cnt,tcy.cnt-hitchklenghy.cnt
+	boxf tcx.cnt,tcy.cnt,tcx.cnt-hitchklenghx.cnt,tcy.cnt+hitchklenghy.cnt
+	boxf tcx.cnt,tcy.cnt,tcx.cnt-hitchklenghx.cnt,tcy.cnt+hitchklenghy.cnt
+	}
+		
+//自機と敵弾の判定
+		kyoriy=tcy.cnt-mycharcentery
+		kyorix=tcx.cnt-mycharcenterx
+
+		kyoriy=abs(kyoriy)
+		kyorix=abs(kyorix)
+
+		if kyoriy<mycharuppery+hitchklenghy.cnt:yhit=1
+		if kyorix<mycharRightx+hitchklenghx.cnt:xhit=1
+		
+		if yhit+xhit=2{
+
+				if ef.cnt=1:break
+				if mutekif=1:break
+				if tb1.cnt=1:tamadis.cnt=1
+					
+				gosub *mycharhit
+		}
+		
+
+	loop
+
+	return
+*mycharhit
+
+	mmplay 3
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2=(eh-1)*10+(pt*5) : if eh2>359 : eh2-=360	;発射角度を求める
+		tf.cnt=1										;フラグオン
+		ef.cnt=1
+	
+		//当たり判定の範囲
+		hitchklenghx.cnt=0
+		hitchklenghy.cnt=0
+
+		//中心座標用加算変数
+		tcplusx.cnt=0
+		tcplusy.cnt=0
+		
+		tc.cnt=255										;色
+		tx.cnt=(mx+20)*1000 :ty.cnt=my*1000				;位置に弾発生(1000倍）
+		txv.cnt=cosa.eh2/10 : tyv.cnt=sina.eh2/10		;移動方向
+		if eh=36 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+	life-=1
+	mx=-1000:my=-1000
+	mutekif=1
+
+	repeat gdansu
+
+		shotx.cnt=-100
+		
+
+	loop
+
+
+
+	return
+*hiteffect
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2=(eh-1)*10+(pt*5) : if eh2>359 : eh2-=360	;発射角度を求める
+		tf.cnt=1										;フラグオン
+		ef.cnt=1
+		tc.cnt=255										;色
+		tx.cnt=tx2.hitnum*1000 :ty.cnt=ty2.hitnum*1000				;位置に弾発生(1000倍）
+		txv.cnt=cosa.eh2/5 : tyv.cnt=sina.eh2/5		;移動方向
+		if eh=36 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+
+
+	score+=100
+	mmplay 3
+
+	return
+*sindaw
+	sindaf+=1
+
+	if sindaf>=100{
+		if life=0:stop
+		gosub *tamadisall
+	}
+	if sindaf>=150{
+		
+		mutekif=0:sindaf=0
+		mx=150:my=300
+		
+
+	}
+	
+	repeat tmax
+	 if tb1.cnt=1:tamadis.cnt=1
+	loop
+	
+	return
+*tamadisall
+	/*
+		repeat tmax
+			if tb1.cnt=1 {
+				tb1.cnt=0:tf.cnt=1
+			}
+		loop
+	*/
+
+	repeat tmax
+		if tb1.cnt=1{
+			
+			tf.cnt=0 
+			ts.cnt=0
+			te1.cnt=0
+			tb1.cnt=0
+			ef.cnt=0
+			
+		//当たり判定の範囲
+		hitchklenghx.cnt=0
+		hitchklenghy.cnt=0
+
+		//中心座標用加算変数
+		tcplusx.cnt=-1000
+		tcplusy.cnt=-1000
+		}
+		
+	loop
+		
+	return
+*exit
+	end
+
+	

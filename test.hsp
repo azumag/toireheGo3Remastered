@@ -1,0 +1,24 @@
+
+	screen 0,220,220,0
+*main
+
+	redraw 2
+
+		color 255,255,255
+		boxf 0,0,220,220
+
+		color 0,0,0
+		pos 0,0:mes abs(100-mousey)/abs(100-mousex)
+
+		color 0,0,0
+		pos 100,100:mes "*"
+		mes abs(100-mousex):mes abs(100-mousey)
+		
+
+		pos mousex,mousey
+		mes mousex:mes mousey
+
+	redraw 1
+	await 1
+
+	goto *main

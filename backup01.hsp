@@ -1,0 +1,641 @@
+#include "hspda.as"
+*top
+	screen 0,440,440
+	cls 
+	color 0,0,0
+	pos 0,0
+	mes "now loading"
+
+
+//三角関数テーブル作成-------------------------------------------------
+	dim sina,360 : dim cosa,360	
+	cosa.0=10000 : sina.0=0
+	cosa.1=9999 : sina.1=175
+	
+	repeat 358,1
+		ent=cnt+1
+		cosa.ent=((cosa.1*cosa.cnt)-(sina.1*sina.cnt))/10000
+		sina.ent=((sina.1*cosa.cnt)+(cosa.1*sina.cnt))/10000
+	loop
+//;----------------------------------------------------------------------
+//--------弾の配列を確保--------------
+	tmax=360		;弾最大数
+	dim tx,tmax	;x座標 (1000倍で計算・固定小数点数）
+	dim ty,tmax	;y座標 (1000倍
+	dim tf,tmax	;フラグ
+	dim txv,tmax	;移動量x
+	dim tyv,tmax	;移動量y
+	dim tx2,tmax	;x座標（表示用・実際の座標）
+	dim ty2,tmax	;y座標（表示用・実際の座標)
+	dim tc,tmax	;色
+
+
+	morex=42:morey=52
+	movex=0:movey=0
+	ket=220:score=000000
+	shotf=1:dansu=5
+	gdansu=0:rdansu=0
+	life=4
+
+	dim hassyaf,dansu
+	dim shotx,dansu
+	dim shoty,dansu
+
+	dim shotcentery,dansu
+	dim shotcenterx,dansu
+
+
+	
+
+	//画面上に出せるenemy1のかず
+	dim en1,50
+	dim enemyhitf,50
+	dim enemy1kogekif,50
+	dim enemybulletf,50
+
+	buffer 3,,,
+	picload "1.bmp",1
+	buffer 4,,,
+	picload "char02.bmp",1
+	buffer 5,,,
+	picload "jet.bmp",1
+	buffer 6,,,
+	picload "tama.bmp",1
+	buffer 7,,,
+	picload "haikei.gif",1
+	buffer 8,,,
+	picload "shot.bmp",1
+	buffer 9,,,
+	picload "zako.gif",1
+	gsel 0
+
+	
+	mmload "stage01.mid",1,1
+	mmload "bom.wav",2
+	mmload "zasizasi.wav",3
+	
+	wait 100
+	
+	
+*titleloop
+
+	redraw 2
+
+	
+	color 255,255,255
+	boxf 0,0,440,440
+	
+	color 0,0,0
+	font "MS ゴシック",20
+	pos 100,100
+	mes "トイレへＧＯ３"
+	
+	gmode 2,morex,morey,
+	pos 100,120:gcopy 3,movex,movey,morex,morey
+	font "MS ゴシック",16:color 255,0,0
+	pos 200,220:mes " Play "
+	pos 200,240:mes " Exit "
+	pos 180,ket:mes "→ "
+
+	gosub *key
+	
+	
+	redraw 1
+	await 1
+
+	if kettei=1:goto *sento
+	if movef=1:goto *tugi
+
+	movex=morex:movey=0
+	kaunter+=1
+	if kaunter>=50:movef=1:kaunter=0
+	
+goto *titleloop
+	
+*tugi
+
+	movex=0
+	kaunter+=1
+	if kaunter>=50:movef=0:kaunter=0
+		
+goto *titleloop
+
+*key
+
+	stick keyin
+
+	if keyin&8:ket=240:menu=1
+	if keyin&2:ket=220:menu=0
+	if keyin&36:kettei=1
+
+	return
+	
+*sento
+	if menu=1:goto *exit
+	
+
+	cls
+
+	mes "Now loading"
+	mmplay 1
+
+	
+	mx=160:my=300
+	mapy=0:mapy2=-437
+	
+	alloc enemydate,1000
+	
+	//エネミーシーケンス読み込み
+
+	Bload "Enemy.dat",enemydate
+
+	notesel enemydate
+	
+	sdim one,10,notemax
+	sdim enemyline,10,notemax	
+	csvline=""
+
+	repeat notemax
+
+		noteget one,cnt
+		csvnote csvline,one
+		enemyline.cnt=csvline
+		//dialog enemyline.cnt
+		
+		
+	loop
+
+	
+	//stop
+	
+*mainloop
+
+	redraw 2
+
+	color 0,0,0
+	boxf 0,0,440,440
+	pos 0,mapy:gcopy 7,0,0,352,437
+	pos 0,mapy2:gcopy 7,0,0,352,437
+	mapy+=1:mapy2+=1
+	if mapy>=440:mapy=-430
+	if mapy2>=440:mapy2=-430
+
+	gosub *stagehyoji
+	
+	gosub *shot
+	gosub *charmain
+	gosub *status
+	gosub *keychk
+	gosub *enemy
+	gosub *enemy_move
+	gosub *enemy_atack
+
+	if mutekif=1:gosub *sindaw
+	gosub *tamaido
+
+	gosub *hitchk
+	
+	await 10
+
+	redraw 1
+
+goto *mainloop
+*stagehyoji
+
+	if titlex>=440:return
+
+	color 255,255,255
+	pos titlex,100:font "MS ゴシック",30:mes "Stage 01"
+	titlex+=1
+	
+
+	return
+	
+*charmain
+
+	gmode 2,40,30,
+	pos mx,my
+	gcopy 4,0,0,40,30
+
+	
+	gmode 2,10,17
+	pos mx+1,my+10:gcopy 5,jetx2,jety2,10,17
+	pos mx+25,my+10:gcopy 5,jetx2,jety2,10,17
+
+	//自機の中心座標
+	mycharcenterx=mx+20
+	mycharcentery=my+15
+
+	mycharuppery=8
+	mycharRightx=3
+
+	if jetx2f=1:goto *tututugi
+	
+	kaunter3+=1
+	if kaunter3>=10{
+	jetx2=10
+	jetx2f=1
+	kaunter3=0
+}
+
+	return
+	
+*tututugi
+	kaunter3+=1
+	if kaunter3>=10{
+	jetx2=0
+	jetx2f=0
+	kaunter3=0
+	}
+	return
+	
+*status
+
+
+	font "MS ゴシック",16
+	color 255,255,255
+	pos 350,0:mes "Score"
+	pos 400,20:mes score
+	pos 355,40:mes "Life"
+	pos 355,80:mes "Bom"
+	pos 355,100:mes "****"
+
+	//ライフがゼロなら表示無
+	if life<=0:return
+	repeat life
+	pos 355+5*cnt,60:mes "|"
+	loop
+
+	return
+*keychk
+
+	stick keyon,2+8+4+1+16
+	
+
+	ido=4
+	if keyon&16:ido=2
+
+	
+	
+	if keyon&2{
+		if my>=0:my-=ido
+	}
+	if keyon&8{
+		if my<=420:my+=ido
+	}
+	if keyon&4{
+		if mx<=310:mx+=ido
+	}
+	if keyon&1{
+		if mx>=0:mx-=ido
+	}
+
+	return
+
+*shot
+	if mutekif=1:return
+	//弾の出現をずらす
+	if gdansu>=1{
+			kaunter4+=1
+			if kaunter4>=10:kaunter4=0:goto *shot1
+			goto *shot2
+	}
+	
+*shot1
+		//ショット発生
+		if gdansu>=dansu:goto *shot2
+		if hassyaf.gdansu=0{
+			shotx.gdansu=mx+25
+			shoty.gdansu=my
+
+		
+			
+			hassyaf.gdansu=1
+		}
+			gdansu+=1
+
+		
+*shot2
+	//弾数分表示＋移動、消失処理。
+	repeat gdansu
+	
+		gmode 2,2,22
+		pos shotx.cnt,shoty.cnt-20:gcopy 8,0,0,2,22
+		pos shotx.cnt-15,shoty.cnt-20:gcopy 8,0,0,2,22
+		//mes cnt
+
+		//中心座標
+			shotcenterx.cnt=shotx.cnt
+			shotcentery.cnt=shoty.cnt+11
+			
+			shotuppery=5
+			shotRightx=10
+
+		shoty.cnt-=10
+		if shoty.cnt<=-22{
+
+			shotx.cnt=mx+25
+			shoty.cnt=my
+		
+		}
+		if shoty.cnt>=460{
+
+			shotx.cnt=mx+25
+			shoty.cnt=my
+		
+		}
+	loop
+	
+	return
+
+*enemy
+	//ターンに応じて配列からデータを取り込む
+	notesel enemyline.turn
+	
+	
+	noteget enemyname,0
+	
+	//エネミーネームにより処理分岐
+	if enemyname="sleep":gosub *sleeping
+	if enemyname="enemy1":gosub *enemy1
+	
+	
+	return
+*enemy1
+
+	noteget exa,1
+	noteget eya,2
+	
+	//敵発生
+	if en1.syut=0{
+		
+		ex.syut=int(exa)
+		ey.syut=int(eya)
+		
+		en1.syut=1
+		
+		syut+=1
+		turn+=1
+		
+	}
+	
+	
+	
+
+	return
+*enemy_move
+
+	//敵移動＆表示&消失
+	repeat syut
+	
+		if en1.cnt=1{
+			
+			gmode 2,32,32
+			pos ex.cnt,ey.cnt
+
+			gcopy 9,0,0,32,32
+			//mes cnt
+			
+			ey.cnt+=3
+			eytime.cnt+=1
+
+			//if eytime.cnt=50:enemy1kogekif.cnt=1
+
+			//敵の中心座標
+			enemy1centerx.cnt=ex.cnt+16
+			enemy1centery.cnt=ey.cnt+16
+
+			enemy1downy=16
+			enemy1leftx=16
+
+			if ey.cnt>=440{
+				en1.cnt=0
+				ey.cnt=-100
+				ex.cnt=-100
+				
+			}
+		}
+
+	loop
+
+	//画面上からenemy1が消えたら、配列用syutをクリヤする
+	repeat syut
+		if en1.cnt=0:kauntsyut+=1
+		if kauntsyut=syut:syut=0
+	loop
+	kauntsyut=0
+
+	return
+	
+*sleeping
+
+	noteget par,1
+	par=int(par)
+
+	if kauntpar>=par{
+	kauntpar=0:turn+=1
+	}
+
+	kauntpar+=1
+	return
+	
+*hitchk
+
+	if mutekif=1:return
+
+
+	if syut!0{
+		//自機と敵
+		repeat syut
+
+			
+			//距離を計算
+			kyoriy=mycharcentery-enemy1centery.cnt
+			
+			if kyoriy<=0{
+				kyoriy=enemy1centery.cnt-mycharcentery
+			}
+
+			if kyoriy<mycharupper+enemy1downy{
+				yhit=1
+			}
+
+			kyorix=mycharcenterx-enemy1centerx.cnt
+			
+			if kyorix<=0{
+				kyorix=enemy1centerx.cnt-mycharcenterx
+			}
+
+			if kyorix<mycharRightx+enemy1leftx{
+				xhit=1
+			}
+
+			//二つの距離が重なっていたらヒット
+			if xhit+yhit=2{
+				
+				enemynumber=cnt
+				
+				gosub *enemy1hit		
+				gosub *mycharhit
+			}
+			xhit=0:yhit=0
+
+		loop
+		//ショットと敵
+
+
+		//弾と敵すべてを走査するために、２重ループにする
+		repeat dansu
+			shothitk=cnt
+			
+			repeat syut
+				//距離を計算
+				skyory=shotcentery.shothitk-enemy1centery.cnt
+				skyorx=shotcenterx.shothitk-enemy1centerx.cnt
+
+				if skyory<=0:skyory=enemy1centery.cnt-shotcentery.shothitk
+				if skyorx<=0:skyorx=enemy1centerx.cnt-shotcenterx.shothitk
+
+				if skyory<shotuppery+enemy1downy:yhit2=1
+				if skyorx<shotRightx+enemy1leftx:xhit2=1
+
+				//ヒット
+				if xhit2+yhit2=2{
+				
+					enemynumber=cnt
+					
+					shotx.shothitk=1000
+					shoty.shithitk=-100
+
+					gosub *enemy1hit		
+				
+				}
+				xhit2=0:yhit2=0
+
+			loop
+					
+			
+		loop
+
+		
+	}
+			
+			
+	return
+*mycharhit
+
+	life-=1
+	mutekif=1
+	mmplay 3
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2=(eh-1)*10+(pt*5) : if eh2>359 : eh2-=360	;発射角度を求める
+		tf.cnt=1										;フラグオン
+		tc.cnt=255										;色
+		tx.cnt=(mx+20)*1000 :ty.cnt=my*1000				;位置に弾発生(1000倍）
+		txv.cnt=cosa.eh2/10 : tyv.cnt=sina.eh2/10		;移動方向
+		if eh=36 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+	repeat dansu
+
+		shotx.cnt=1000
+		shoty.cnt=-100
+
+	loop
+
+	gdansu=0
+	mx=-100:my=-100
+	
+	return
+*gameover
+	cls
+	color 0,0,0
+	pos 100,100
+	mes "gameover"
+	
+	button "return",*top
+	stop
+*sindaw
+	
+	sindaf+=1
+	if sindaf>=100{
+		mutekif=0:mx=150:my=300:sindaf=0
+		if life=0:goto *gameover
+	}
+	
+	return
+*enemy1hit
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2=(eh-1)*10+(pt*5) : if eh2>359 : eh2-=360	;発射角度を求める
+		tf.cnt=1										;フラグオン
+		tc.cnt=255										;色
+		tx.cnt=(ex.enemynumber+20)*1000 :ty.cnt=ey.enemynumber*1000				;位置に弾発生(1000倍）
+		txv.cnt=cosa.eh2/5 : tyv.cnt=sina.eh2/5		;移動方向
+		if eh=36 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+	//敵座標を画面外に出す
+	ex.enemynumber=-100
+	ey.enemynumber=5000
+
+	score+=100
+	mmplay 3
+
+	return
+*tamaido
+
+	repeat tmax
+		if tf.cnt<1 :continue						;存在する弾だけ
+		tx.cnt+=txv.cnt : ty.cnt+=tyv.cnt			;移動処理
+		tx2.cnt=tx.cnt/1000 : ty2.cnt=ty.cnt/1000	;表示用座標を求める
+		
+		if (tx2.cnt>440)|(tx2.cnt<-8)|(ty2.cnt<-8)|(ty2.cnt>440) {
+			tf.cnt=0 :continue
+		}											;画面外なら消す
+		
+		tc.cnt- : if tc.cnt<0 : tc.cnt=0			;色を暗くする
+		color tc.cnt,tc.cnt,tc.cnt
+		pos tx2.cnt-4,ty2.cnt-4 :mes "."			;表示
+	loop
+
+	return
+*enemy_atack
+
+
+	repeat syut
+	
+	if enemy1kogekif.cnt=1{
+
+		if enemybulletf.cnt=0{
+			
+			enemybulletx.cnt=ex.cnt
+			enemybullety.cnt=ey.cnt
+			enemybulletf.cnt=1
+			mokhyox.cnt=mx
+			mokhyoy.cnt=my
+			
+		}
+		if enemybulletf.cnt=1{
+
+			enemybulletx.cnt+=1
+			enemybullety.cnt+=1
+			pos enemybulletx.cnt,enemybullety.cnt
+			gcopy 6,0,0,14,14
+
+		}
+
+	}
+
+	loop
+
+	
+	return
+*exit
+	end
+

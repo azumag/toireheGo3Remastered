@@ -1,0 +1,2228 @@
+#include "hsp3dish.as"
+#include "d3m.hsp"
+
+goto *start
+
+#deffunc getick
+
+	name=0
+
+//非トリガータイプ
+	getkey left,37
+	getkey right,39
+	getkey up,38
+	getkey down,40
+	getkey sps,32
+
+//トリガータイプ
+	getkey ent,13
+	getkey xkey,88
+
+//戻り値の変化
+	if left=1:name+=1
+	if right=1:name+=4
+	if up=1:name+=2
+	if down=1:name+=8
+	if sps=1:name+=16
+	
+	if ent=0:buf=0
+	if ent=1&buf=0{
+		buf=1
+		name+=32
+	}
+
+	if xkey=0:buf2=0
+	if xkey=1&buf2=0{
+		buf2=1
+		name+=64
+	}
+	
+	return name
+*start
+	
+randomize
+
+//----------------------------オブジェクト種類表
+;ts.cnt
+;0=なし
+;1=敵１
+;2=弾１
+;3=エフェクトのパーティクル
+;4=アイテム
+;5=敵２
+;6=中ボス１
+;7=弾２
+;8=かすりえふぇくと
+;9=敵３
+;10=弾３
+;11=背景の雲
+;12=ボス１
+;13=弾４
+;15=ダメージエフェクト
+//----------------------------
+
+
+	screen 0,440,440
+	cls 
+	color 0,0,0
+	pos 0,0
+	mes "now loading"
+*top
+	
+//三角関数テーブル作成--------------8bit三角関数---------------------------
+	dim sina,360 : dim cosa,360	
+	cosa.0=10000 : sina.0=0
+	cosa.1=9999 : sina.1=175
+	
+	repeat 358,1
+		ent=cnt+1
+		cosa.ent=((cosa.1*cosa.cnt)-(sina.1*sina.cnt))/10000
+		sina.ent=((sina.1*cosa.cnt)+(cosa.1*sina.cnt))/10000
+	loop
+//;----------------------------------------------------------------------
+//--------弾の配列を確保--------------
+	tmax=1000				;画面上の弾最大数
+	//dim tx,tmax			;x座標 (1000倍で計算・固定小数点数）
+	//dim ty,tmax			;y座標 (1000倍
+	dim tf,tmax				;フラグ
+	//dim txv,tmax			;移動量x
+	//dim tyv,tmax			;移動量y
+	//dim tx2,tmax			;x座標（表示用・実際の座標）
+	//dim ty2,tmax			;y座標（表示用・実際の座標)
+	//dim tc,tmax			;色
+	//dim ts,tmax				;発生したオブジェクトの種類
+	dim tcx,tmax			;中心座標x
+	dim tcy,tmax			;中心座標y
+	//dim hitchklenghx,tmax	;当たり判定x
+	//dim hitchklenghy,tmax	;当たり判定y
+	//dim objtimek,tmax		;オブジェクトのフレームカウンタ
+	//dim eh2,tmax			;弾の角度保存
+	dim dis,tmax			;オブジェクトの消えるフラグ
+	dim objtimek2,tmax		;オブジェクトの消えるアニメーションカウンタ
+	dim objtimek3,tmax		;オブジェクトの消えるアニメーションカウンタ2
+	ddim kaitendo,tmax		;オブジェクト回転配列
+//----------------------------------------
+//----------------------------ショットの配列
+	maxdansu=100
+
+	//dim shotx,maxdansu		
+	//dim shoty,maxdansu		
+	dim shotf,maxdansu			
+	//dim shotxv,maxdansu	
+	//dim shotyv,maxdansu	
+	//dim shotx2,maxdansu		
+	//dim shoty2,maxdansu		
+	//dim shotcx,maxdansu		
+	//dim shotcy,maxdansu		
+	dim shotdis,maxdansu	
+//----------------------------
+
+//通常変数の宣言
+
+	ket=220				//→の表示座標
+	alloc enemydate,2000//エネミーシーケンス変数宣言
+	dansu=2				//横弾数
+	life=10				//初期ライフ
+	drawhantei=0		//判定を描画
+	sp=1				//弾速
+	waitkaunt=1			//初期ウェイト
+	chp=150				//初期中ボスＨＰ
+	kasurikaunter=300
+	waponx=440
+	sdim replay,16400
+	replayname="replay1"
+	ketx=180
+
+//バッファにキャラ画像読み込み
+
+	buffer 3,,,
+	picload "mychar.bmp",1
+	buffer 4,,,
+	picload "zako.gif",1
+	buffer 5,,,
+	picload "alltama.bmp",1
+	buffer 6,,,
+	picload "haikei.gif",1
+	buffer 7,1470,64,
+	picload "chuboss.bmp",1
+	buffer 8,,,
+	picload "system.bmp",1
+	buffer 9,,,
+	picload "boss.gif",1
+	
+//バッファに音楽データ読み込み
+
+//	dmloadfname "stage1.mid", 4
+//	dmloadfname "boss01a.mid", 2
+//	dmloadfname "boss01b.mid", 3
+	
+	
+//	ds_load "bom.wav",2
+//	ds_load "zasizasi.wav",3
+//	ds_load "bokan.wav",4
+//	ds_load "poka.wav",5
+//	ds_load "bachi.wav",6
+//	ds_load "poi2.wav",7
+//	ds_load "kin.wav",8
+//	ds_load "bishao.wav",10
+
+	mmload "stage01.mid",0
+	mmload "boss01a.mid",2
+	mmload "boss01b.mid",3
+	mmload "bom.wav",2
+	mmload "zasizasi.wav",3
+	mmload "bokan.mp3",4
+	mmload "poka.wav",5
+	mmload "bachi.wav",6
+	mmload "poi2.wav",7
+	mmload "kin.wav",8
+	mmload "boss01.mid",9
+	mmload "bishao.wav",10
+
+
+//  使用するパーティクルを作成
+	d3mkparticle 0, 255, 255, 255 ; 白
+	d3mkparticle 1,  64, 192, 255 ; 青
+	d3mkparticle 2,  255, 0,	0 ; 赤
+
+*titleloop
+
+	gsel 0	
+	redraw 2
+//----------------------------モジュールで背景描画
+	ct++
+	redraw 0
+
+	color , 8, 24
+	boxf
+	; カメラ座標を上向きに
+	d3setcam 0,0,-500,0,0,0
+	; パーティクルを描画
+	randomize 0
+	repeat 100
+
+		x = rnd(8000) - 4000
+		y = rnd(8000) - 4000
+		z = rnd(8000)
+		v = rnd(50) + 50
+
+		z = (ct * v + z) / 8000 - 8000
+
+		; 雪の後ろの光彩
+		gmode 5, , , 64
+		d3particle 1,  x, y, -z, 150
+
+		; 雪パーティクル
+		gmode 5, , , 255
+		d3particlem  0, 50
+
+	loop
+//----------------------------タイトル表示
+	color 255,0,0
+	font "MS ゴシック",20
+	pos 100,100
+	mes "トイレへＧＯ３"
+	gmode 5, , , 255
+	d3particle  0,-85,110,0, 50
+	gmode 2,42,51,
+	pos 100,120:gcopy 3,0,50,42,51
+//----------------------------メニュー表示
+	
+	font "MS ゴシック",16:color 255,0,0
+	pos 200,220:mes " Play "
+	pos 200,240:mes " Replay"
+	pos 200,260:mes " Option"
+	pos 200,280:mes " Exit "
+	pos ketx,ket:mes "→ "
+	pos 380,420:mes "fps="+fps
+//----------------------------キーチェック＆画面移動
+
+	gosub *key
+	if kettei=1:goto *Stagestart
+
+//----------------------------ＦＰＳ取得＆調整
+	fps=d3getfps()
+	if fps>60:waitkaunt=double(waitkaunt)+0.1
+	if fps<40:waitkaunt=double(waitkaunt)-0.1
+	if waitkaunt<=0.0:waitkaunt=0
+	await waitkaunt
+//----------------------------
+	redraw 1
+	goto *titleloop
+*key
+
+	stick keyin
+
+	if keyin&8:ket+=20:menu+=1
+	if keyin&2:ket-=20:menu-=1
+
+	ket=limit(ket,220,280)
+	menu=limit(menu,0,3)
+	if keyin&36:kettei=1
+
+	return
+
+*Stagestart
+	kettei=0
+	if menu=1:goto *replayload
+	if menu=2:goto *titleloop
+	if menu=3:goto *endo
+*Stagestart2
+
+//----------------------------一面初期設定
+	cls
+	mes "Now loading"
+	dmplay 0, 4
+	mx=160:my=440
+	mapy=0
+	; カメラ座標を↓向きに
+	d3setcam 0,0,10,0,0,0
+
+//----------------------------エネミーシーケンス読み込み
+	bload "stage1.dat",enemydate
+	notesel enemydate
+	sdim one,20,notemax
+	sdim enemyline,20,notemax	
+	csvline=""
+	repeat notemax
+		noteget one,cnt
+		csvnote csvline,one
+		enemyline.cnt=csvline
+	loop
+	gsel 0
+//--------------------------------------------------------メインループ始まり
+*mainloop
+
+	ct++
+	frame+=1
+	redraw 0
+
+	color 0,0,0
+	boxf 0,0,440,440
+
+	gosub *backg_screen
+	gosub *write_stage
+	gosub *keychk
+	
+	gosub *write_status
+	gosub *write_mychar
+	gosub *put_shot
+	gosub *call_enemy
+	
+	gosub *object_move
+	
+	if hissatuf=1:gosub *moreta_wapon
+	
+	redraw 1
+	gosub *hitchk
+//----------------------------ＦＰＳ取得＆調整
+	fps=d3getfps()	
+	if fps>=60:waitkaunt=double(waitkaunt)+0.1
+	if fps<=40:waitkaunt=double(waitkaunt)-0.1
+	if waitkaunt<=0.0:waitkaunt=0
+	await waitkaunt
+//----------------------------
+
+	goto *mainloop
+
+*backg_screen
+//----------------------------背景描画
+	
+	pos 0,mapy:gcopy 6,0,0,352,440
+	pos 0,mapy-440:gcopy 6,0,0,352,440
+
+	mapy+=1
+	if mapy>=440:mapy=0
+
+	if frame¥50=0{
+		repeat tmax
+			if tf.cnt>0 :continue							;空きフラグを探
+			rrr=rnd(350)		
+			rr2=rnd(5)
+			eh+
+			eh2.cnt=90										;向かう角度を求める
+			tf.cnt=1										;フラグオン
+			tc.cnt=255										;色
+			ts.cnt=11
+			tx.cnt=rrr*1000 :ty.cnt=0*1000			;位置に弾発生(1000倍）
+			txv.cnt=cosa(eh2.cnt)/4+rr2 : tyv.cnt=sina(eh2.cnt)/4+rr2	;移動方
+
+			//当たり判定の範囲
+			hitchklenghx.cnt=0
+			hitchklenghy.cnt=0
+	
+			//中心座標用加算変数
+			tcplusx.cnt=0
+			tcplusy.cnt=0
+			
+			if eh=1 : eh=0 : break							;1つだしてループを抜ける
+		loop
+	}
+	
+	return
+*write_stage
+//----------------------------ステージ表示
+
+
+	if titlex>=440:return
+	color 255,255,255
+	pos titlex,100:font "MS ゴシック",30:mes "Stage1"
+	titlex+=1
+
+//この設定で、パーティクルを２Ｄで使える
+//	gmode 5,,,255
+//	d3setcam 0,0,450,0,0,0
+//	d3particle 1,-100+220,-titlex+220,0,10
+//				,-y座標+220,-x座標+220
+
+	if titlex>=50:return
+	my-=3
+	
+	return
+*keychk
+//----------------------------キーチェック
+
+	if replayf=0{
+		//stick keyon,2+8+4+1+16
+		getick
+		keyon=stat
+		poke replay,frame,keyon
+	}
+	if replayf=1{
+		memcpy keyon,replay,1,0,frame
+	}
+	
+	
+	ido=4
+	if keyon&16:ido=2
+	
+	if kaiwaf>=1{
+		if keyon&32{
+			kaiwaf+=1
+		}
+	}
+	
+	if keyon&2{
+		if my>=0:my-=ido
+	}
+	if keyon&8{
+		if my<=410:my+=ido
+	}
+	if keyon&4{
+		if mx<=310:mx+=ido
+	}
+	if keyon&1{
+		if mx>=0:mx-=ido
+	}
+	
+	if keyon&64{
+		if kasurikaunter>=300{
+			hissatuf=1
+			ds_play 8
+		}
+	}
+
+	
+
+	return
+*write_status
+//----------------------------ステータス表示
+	
+	font "MS ゴシック",16
+	color 255,255,255
+	
+	pos 350,0:mes "Score"
+	pos 400,20:mes score
+	pos 355,40:mes "life"
+	pos 355,80:mes "Bom"
+	pos 355,100:mes "****"
+	pos 350,130:mes "ShotItem:"+shotpower
+	
+	if shotpower=20{
+		shotpower=0
+		shotlv+=1
+		dansu+=2
+		ds_play 7
+	}
+	
+	pos 350,160:mes "ShotLv:"+shotlv
+	pos 355,200:mes "FPS="+fps
+				mes "wait="+waitkaunt
+				mes "object:"+sonzai
+				mes "kasuri="+kasurikaunter
+	line 355,400,355+kasurikaunter/10,400
+				mes "Frame="+frame
+
+	//ライフがゼロなら表示無
+	if life<=0:return
+	repeat life
+	pos 355+5*cnt,60:mes "|"
+	loop
+
+	return
+*write_mychar
+
+	if mutekif=0:gmode 2,40,30,
+	if mutekif=1:gmode 2,40,30,
+	if mutekif>=2{
+		if frame¥5=1:gmode 5,,,200:else:gmode 2,40,30
+		mutekif+=1
+		if mutekif>=100:mutekif=0
+	}
+	pos mx,my:gcopy 3,0,0,40,30
+	gmode 2,10,17
+	
+	pos mx+1,my+10:gcopy 3,jetx2,32,10,17
+	pos mx+25,my+10:gcopy 3,jetx2,32,10,17
+
+	//自機の中心座標
+	mycharcenterx=mx+18
+	mycharcentery=my+15
+	//当たり判定範囲
+	mycharuppery=3
+	mycharRightx=3
+	//カスリの判定範囲
+	kasury=15
+	kasurx=20
+	
+	return
+*put_shot
+	if utta=1:uttakaunter+=1
+	if uttakaunter>=6:utta=0:uttakaunter=0
+	if utta=1:return
+	
+
+	repeat dansu
+		gdansu=cnt
+		
+		repeat maxdansu
+				
+			if shotf.cnt>0 :continue									;空きフラグを探す
+			eh+
+			
+	//発射位置を動かし、移動方向を設定
+			if gdansu¥2=0{
+				shotxmove=0
+			}else{
+				shotxmove=10
+			}
+	
+			if gdansu=0:eh3.cnt=270		
+			if gdansu=1:eh3.cnt=270	
+			if gdansu=2:eh3.cnt=268
+			if gdansu=3:eh3.cnt=272
+			if gdansu=4:eh3.cnt=266
+			if gdansu=5:eh3.cnt=274
+			if gdansu=6:eh3.cnt=264
+			if gdansu=7:eh3.cnt=274
+			if gdansu=8:eh3.cnt=262
+			if gdansu=9:eh3.cnt=276
+			if gdansu=10:eh3.cnt=260
+			if gdansu=11:eh3.cnt=278
+			if gdansu=12:eh3.cnt=258
+			if gdansu=13:eh3.cnt=280
+			if gdansu=14:eh3.cnt=256
+			if gdansu=15:eh3.cnt=282
+	//----------------------------ここまで
+	
+			shotf.cnt=1												;フラグをオンにする
+		
+			shotx.cnt=(mx+14+shotxmove)*1000: shoty.cnt=my*1000		;位置に弾発生(1000倍）
+			shotxv.cnt=cosa(eh3.cnt)*sp : shotyv.cnt=sina(eh3.cnt)*sp			;移動方向
+			if eh=1 : eh=0 : break									;1発発射してループを抜ける	
+			
+		loop
+		
+	loop
+		ShotHitx=1
+		ShotHity=11
+		utta=1
+return
+*moreta_wapon
+	if kasurikaunter<300:hissatuf=0:return
+
+
+
+	if waponx>=-400{
+		
+		pos waponx,220
+		gmode 2,51,44
+		gcopy 3,90,48,51,44
+		pos waponx+60:font "MS　ゴシック",30
+		mes "もれ太スパーク！！"
+		waponx-=10
+	}
+	if waponx<=0{
+		repeat 2
+		wcnt=cnt
+			repeat maxdansu
+					
+				if shotf.cnt>0 :continue									;空きフラグを探す
+				eh+
+				if wcnt=0:rand=0
+				if wcnt=1:rand=180
+				eh3.cnt=rand
+				shotf.cnt=2												;フラグをオンにする	
+				shotx.cnt=(mx+14+shotxmove)*1000: shoty.cnt=my*1000		;位置に弾発生(1000倍）
+				shotxv.cnt=cosa(eh3.cnt)*sp : shotyv.cnt=sina(eh3.cnt)*sp			;移動方向
+				if eh=1 : eh=0 : break									;1発発射してループを抜ける	
+				
+			loop
+		loop
+		kasurikaunter-=300:waponx=440:hissatuf=0
+	}
+
+	return
+*call_enemy
+	//ターンに応じて配列からデータを取り込む
+	notesel enemyline.turn
+	noteget enemyname,0
+	
+	//エネミーネームにより処理分岐
+	if enemyname="sleep":gosub *sleeping
+	if enemyname="kaiwa1":gosub *k1
+	if enemyname="kaiwa2":gosub *k2
+	if enemyname="kaiwa3":gosub *k3
+	if enemyname="stop":gosub *teisi
+	if enemyname="enemy1":gosub *put_enemy1
+	if enemyname="enemy2":gosub *put_enemy2
+	if enemyname="enemy3":gosub *put_enemy3
+	if enemyname="midle1":gosub *midle1
+	if enemyname="boss1":gosub *boss1
+		
+	return
+*k1
+	if kaiwaf=0:kaiwaf=1
+
+	if kaiwaf=1{
+		pos 0,440-kaiwakaunter:gmode 4,,,200
+		if kaiwakaunter>=140:pos 0,300
+		gcopy 8,0,0,369,121
+		
+		pos 10,450-kaiwakaunter:gmode 1,,,
+		if kaiwakaunter>=140:pos 10,310
+		gcopy 8,0,123,80,99
+
+		
+		if kaiwakaunter>=140{
+			pos 100,310
+			mes "通信士¥n¥nわが軍の領内にUNKNOWN機が進入！"
+		}
+		kaiwakaunter+=10
+	}
+	
+	if kaiwaf=2{
+		gmode 4,,,200
+		pos 0,300
+		gcopy 8,0,0,369,121
+		
+		gmode 1,,,
+		pos 10,310
+		gcopy 8,0,123,80,99
+
+		pos 100,310
+		mes "通信士¥n¥n機体確認信号に答えません！¥n隊長！どうしますか！？"
+		
+	}
+	if kaiwaf=3{
+		gmode 4,,,200
+		pos 0,300
+		gcopy 8,0,0,369,121
+		
+		gmode 1,,,
+		pos 10,310
+		gcopy 8,82,123,80,99
+				
+		pos 100,310
+		mes "隊長¥n¥n全員、攻撃の用意!¥n¥n抵抗した場合は撃墜してもかまわん！"
+		
+	}
+	if kaiwaf=4{
+		gmode 4,,,200
+		pos 0,300
+		gcopy 8,0,0,369,121
+		
+		gmode 2,,,
+		pos 10,310
+		gcopy 3,90,48,51,44
+		
+		
+		pos 100,310
+		mes "もれ太¥n¥nトイレは何処だろうかナァ。"
+		
+	}
+	if kaiwaf=5{
+		gmode 4,,,200
+		pos 0,300
+		gcopy 8,0,0,369,121
+		
+		pos 10,310:gmode 2,,,
+		gcopy 3,90,48,51,44
+		
+		pos 100,310
+		mes "もれ太¥n¥nくそ、銃のトリガーがこわれてて¥nたれ流しだ。"
+		
+	}
+	if kaiwaf=6{
+		kaiwaf=0
+		turn+=1
+		kaiwakaunter=0
+	}
+
+	return
+*k2
+	if kaiwaf=0:kaiwaf=1
+
+	if kaiwaf=1{
+		
+		pos 0,440-kaiwakaunter:gmode 4,,,200
+		if kaiwakaunter>=140:pos 0,300
+		gcopy 8,0,0,369,121
+		
+		pos 10,450-kaiwakaunter:gmode 1,,,
+		if kaiwakaunter>=140:pos 10,310
+		gcopy 8,0,123,80,99
+
+		
+		if kaiwakaunter>=140{
+			pos 100,310
+			mes "通信士¥n¥n防衛線を突破されました！"
+		}
+		kaiwakaunter+=10
+	}
+	
+	if kaiwaf=2{
+		gmode 4,,,200
+		pos 0,300
+		gcopy 8,0,0,369,121
+		
+		gmode 1,,,
+		pos 10,310
+		gcopy 8,82,123,80,99
+				
+		pos 100,310
+		mes "隊長¥n¥nなんという強さだ・・。¥n試作機だが、'NOSTRA'を出動させろ！"
+		
+		
+	}
+	if kaiwaf=3{
+		gmode 4,,,200
+		pos 0,300
+		gcopy 8,0,0,369,121
+		
+		gmode 1,,,
+		pos 10,310
+		gcopy 8,82,123,80,99
+				
+		pos 100,310
+		mes "隊長¥n¥nしかし、奴の目的は¥n何なんだ・・・？"
+		
+	}
+	if kaiwaf=4{
+		gmode 4,,,200
+		pos 0,300
+		gcopy 8,0,0,369,121
+		
+		gmode 2,,,
+		pos 10,310
+		gcopy 3,90,48,51,44
+		
+		
+		pos 100,310
+		mes "もれ太¥n¥nうートイレトイレ。"
+		mmstop
+	}
+
+	if kaiwaf=5{
+		kaiwaf=0
+		turn+=1
+		kaiwakaunter=0
+		dmplay 0,2
+		
+	}
+
+	return
+*k3
+	if kaiwaf=0:kaiwaf=1
+
+	if kaiwaf=1{
+		
+		pos 0,440-kaiwakaunter:gmode 4,,,200
+		if kaiwakaunter>=140:pos 0,300
+		gcopy 8,0,0,369,121
+		
+		pos 10,450-kaiwakaunter:gmode 1,,,
+		if kaiwakaunter>=140:pos 10,310
+		gcopy 8,82,123,80,99
+
+		
+		if kaiwakaunter>=140{
+			pos 100,310
+			mes "隊長¥n¥nまだまだ！ﾌｧﾝﾈﾙがのこっている！"
+		}
+		kaiwakaunter+=10
+	}
+	
+	if kaiwaf=2{
+		kaiwaf=0
+		turn+=1
+		kaiwakaunter=0
+		gook=1
+	}
+
+	return
+	
+*put_enemy1
+
+	noteget exa,1
+	noteget eya,2
+	
+	//敵発生
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2.cnt=90										;向かう角度を求める
+		tf.cnt=1										;フラグオン
+		tc.cnt=255										;色
+		
+		ts.cnt=1										;敵フラグをオン
+		
+		tx.cnt=int(exa)*1000 :ty.cnt=int(eya)*1000			;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/5 : tyv.cnt=sina(eh2.cnt)/5	;移動方向
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=13
+		hitchklenghy.cnt=13
+
+		//中心座標用加算変数
+		tcplusx.cnt=12
+		tcplusy.cnt=12
+		
+		if eh=1 : eh=0 : break							;1つ出現さしてループを抜ける
+	loop
+
+	turn+=1
+	
+	return
+*put_enemy2
+	noteget exa,1
+	noteget eya,2
+	
+	//敵発生
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2.cnt=89										;向かう角度を求める
+		tf.cnt=1										;フラグオン
+		tc.cnt=255										;色
+		ts.cnt=5
+		
+		tx.cnt=int(exa)*1000 :ty.cnt=int(eya)*1000			;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/5 : tyv.cnt=sina(eh2.cnt)/5	;移動方向
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=13
+		hitchklenghy.cnt=13
+
+		//中心座標用加算変数
+		tcplusx.cnt=12
+		tcplusy.cnt=12
+		
+		if eh=1 : eh=0 : break							;1つだしてループを抜ける
+	loop
+
+	turn+=1	
+	return
+*put_enemy3
+	noteget exa,1
+	noteget eya,2
+	
+	//敵発生
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2.cnt=180										;向かう角度を求める
+		
+		tf.cnt=1										;フラグオン
+		tc.cnt=255										;色
+		ts.cnt=9
+		
+		tx.cnt=int(exa)*1000 :ty.cnt=int(eya)*1000			;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/3 : tyv.cnt=sina(eh2.cnt)/3	;移動方向
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=13
+		hitchklenghy.cnt=13
+
+		//中心座標用加算変数
+		tcplusx.cnt=12
+		tcplusy.cnt=12
+		
+		if eh=1 : eh=0 : break							;1つだしてループを抜ける
+	loop
+
+	turn+=1	
+	return
+*midle1
+
+	noteget exa,1
+	noteget eya,2
+	noteget chp,3
+	chp=int(chp)
+	//中ボス発生！
+	
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2.cnt=125											;向かう角度を求める
+		tf.cnt=1										;フラグオン
+		tc.cnt=255										;色
+		ts.cnt=6
+		
+		tx.cnt=int(exa)*1000 :ty.cnt=int(eya)*1000		;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/10 : tyv.cnt=sina(eh2.cnt)/10			;移動方向
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=32
+		hitchklenghy.cnt=32
+
+		//中心座標用加算変数
+		tcplusx.cnt=32
+		tcplusy.cnt=32
+		
+		if eh=1 : eh=0 : break							;1発発射してループを抜ける
+	loop
+
+	turn+=1
+	
+	return
+*boss1
+
+	noteget exa,1
+	noteget eya,2
+	noteget dhp,3
+	bhp=int(dhp)
+	//大ボス発生
+	
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2.cnt=90											;向かう角度を求める
+		tf.cnt=1										;フラグオン
+		tc.cnt=255										;色
+		ts.cnt=12
+		
+		tx.cnt=int(exa)*1000 :ty.cnt=int(eya)*1000		;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/10 : tyv.cnt=sina(eh2.cnt)/10			;移動方向
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=64
+		hitchklenghy.cnt=32
+
+		//中心座標用加算変数
+		tcplusx.cnt=60
+		tcplusy.cnt=32
+		
+		if eh=1 : eh=0 : break							;1発発射してループを抜ける
+	loop
+
+	turn+=1
+	
+	return
+*put_item
+	
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2.cnt=270 
+		tf.cnt=1										;フラグオン
+		ts.cnt=4
+	
+		//当たり判定の範囲
+		hitchklenghx.cnt=20
+		hitchklenghy.cnt=20
+
+		//中心座標用加算変数
+		tcplusx.cnt=0
+		tcplusy.cnt=9
+		
+		tc.cnt=255											;色
+		tx.cnt=(tx2.target+9)*1000 :ty.cnt=ty2.target*1000	;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/5 : tyv.cnt=sina(eh2.cnt)/5	;移動方向
+		if eh=1 : eh=0 : break								;36発発射してループを抜ける
+	loop
+
+	return
+*put_enemyshot1
+
+	if mutekif>=1:return
+
+//----------------------------自機のいる角度を計算
+	//敵の座標からの距離を計測
+	kyorx=tx2.target-mx
+	kyory=ty2.target-my
+	if tx2.target>mx:hantenx=1:else:hantenx=0
+	if ty2.target>my:hanteny=1:else:hanteny=0
+
+	//距離の絶対値をとる(0だったら＋１する）
+	kyory=abs(kyory)
+	kyorx=abs(kyorx)
+	if kyorx=0 :kyorx+=1
+	if kyory=0 :kyory+=1
+
+	//座標から自分のいる座標の角度を計算
+	zahyo=double(kyory)/double(kyorx)
+	a=atan(zahyo)
+	b=a*180/3.1415926535897932384626433832795
+	b=int(b)
+
+	if hantenx=1:b=180-b
+	if hanteny=1:b=360-b
+	if b>=360:b=4
+	if b<=0:b=4
+//----------------------------ここまで
+	
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2.cnt=b-2										;向かう角度を求める
+		tf.cnt=1										;フラグオン
+		tc.cnt=255										;色
+		ts.cnt=2										;敵球フラグ恩
+		
+		tx.cnt=tx2.target*1000 :ty.cnt=ty2.target*1000		;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/5
+		tyv.cnt=sina(eh2.cnt)/5	;移動方向
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=2
+		hitchklenghy.cnt=2
+
+		//中心座標用加算変数
+		tcplusx.cnt=2
+		tcplusy.cnt=2
+		
+		if eh=1 : eh=0 : break							;1発発射してループを抜ける
+	loop
+	
+	return
+*endanmak
+
+	if mutekif>=1:return
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2.cnt=(eh-1)*10+(pt*5) : if eh2>359 : eh2-=360	;発射角度を求める
+		tf.cnt=1										;フラグオン
+		ts.cnt=2
+		
+		tc.cnt=255										;色
+		tx.cnt=(tx2.target+8)*1000 :ty.cnt=(ty2.target-3)*1000	;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/5 : tyv.cnt=sina(eh2.cnt)/5			;移動方向
+
+		if ts.target=12:tx.cnt=(tcx.target)*1000 :ty.cnt=(tcy.target)*1000	;位置に弾発生(1000倍）
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=3
+		hitchklenghy.cnt=3
+
+		//中心座標用加算変数
+		tcplusx.cnt=2
+		tcplusy.cnt=2
+		
+		if eh=36 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+	return
+*danmak2
+
+	if mutekif>=1:return
+
+	//敵の座標からの距離を計測
+	kyorx=tx2.target-mx
+	kyory=ty2.target-my
+	if tx2.target>mx:hantenx=1:else:hantenx=0
+	if ty2.target>my:hanteny=1:else:hanteny=0
+
+	//距離の絶対値をとる(0だったら＋１する）
+	kyory=abs(kyory)
+	kyorx=abs(kyorx)
+	if kyorx=0 :kyorx+=1
+	if kyory=0 :kyory+=1
+
+	//座標から自分のいる座標の角度を計算
+	zahyo=double(kyory)/double(kyorx)
+	a=atan(zahyo)
+	b=a*180/3.1415926535897932384626433832795
+	b=int(b)
+
+	if hantenx=1:b=180-b
+	if hanteny=1:b=360-b
+	if b>=360:b=2
+	if b<=0:b=2
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		if eh¥2=0:maikai=-1:else:maikai=1
+		
+		eh2.cnt=b-2+(eh*5*(maikai)) : if eh2.cnt>359 : eh2.cnt-=360
+		tf.cnt=1										;フラグオン
+		ts.cnt=7
+		
+		tc.cnt=255										;色
+		tx.cnt=(tx2.target+8)*1000 :ty.cnt=(ty2.target-3)*1000	;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/5 : tyv.cnt=sina(eh2.cnt)/5			;移動方向
+
+
+		if ts.target=6{
+			tx.cnt=(tcx.target-14)*1000 :ty.cnt=tcy.target*1000
+			txv.cnt=cosa(eh2.cnt)/3:tyv.cnt=sina(eh2.cnt)/3
+		}
+		if ts.target=12{
+			tx.cnt=(tcx.target-5)*1000 :ty.cnt=(tcy.target)*1000
+			txv.cnt=cosa(eh2.cnt)/2:tyv.cnt=sina(eh2.cnt)/2
+		}
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=3
+		hitchklenghy.cnt=3
+
+		//中心座標用加算変数
+		tcplusx.cnt=2
+		tcplusy.cnt=2
+		
+		if eh=6 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+	return
+*danmak3
+
+	if mutekif>=1:return
+
+	//敵の座標からの距離を計測
+	kyorx=tx2.target-mx
+	kyory=ty2.target-my
+	if tx2.target>mx:hantenx=1:else:hantenx=0
+	if ty2.target>my:hanteny=1:else:hanteny=0
+
+	//距離の絶対値をとる(0だったら＋１する）
+	kyory=abs(kyory)
+	kyorx=abs(kyorx)
+	if kyorx=0 :kyorx+=1
+	if kyory=0 :kyory+=1
+
+	//座標から自分のいる座標の角度を計算
+	zahyo=double(kyory)/double(kyorx)
+	a=atan(zahyo)
+	b=a*180/3.1415926535897932384626433832795
+	b=int(b)
+
+	if hantenx=1:b=180-b
+	if hanteny=1:b=360-b
+	if b>=360:b=2
+	if b<=0:b=2
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		if eh¥2=0:maikai=-1:else:maikai=1
+		
+		eh2.cnt=b-2+(eh*5*(maikai)) : if eh2.cnt>359 : eh2.cnt-=360
+		tf.cnt=1										;フラグオン
+		ts.cnt=10
+		
+		tc.cnt=255										;色
+		tx.cnt=(tx2.target+8)*1000 :ty.cnt=(ty2.target-3)*1000	;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/3 : tyv.cnt=sina(eh2.cnt)/3			;移動方向
+
+		if ts.target=12{
+			tx.cnt=(tcx.target-14)*1000 :ty.cnt=(tcy.target+10)*1000
+			txv.cnt=cosa(eh2.cnt)/3:tyv.cnt=sina(eh2.cnt)/3
+		}
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=3
+		hitchklenghy.cnt=3
+
+		//中心座標用加算変数
+		tcplusx.cnt=2
+		tcplusy.cnt=2
+		
+		if eh=3 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+	return
+*danmak4
+
+	if mutekif>=1:return
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		if eh¥2=0:maikai=-1:else:maikai=1
+		
+		eh2.cnt=0
+		tf.cnt=1										;フラグオン
+		ts.cnt=13
+		
+		tc.cnt=255										;色
+		if eh=1:	tx.cnt=(tcx.target+52)*1000	:	ty.cnt=(tcy.target-15)*1000
+		if eh=2:	tx.cnt=(tcx.target-57)*1000	:	ty.cnt=(tcy.target-15)*1000
+		if eh=3:	tx.cnt=(tcx.target+50)*1000	:	ty.cnt=(tcy.target-30)*1000
+		if eh=4:	tx.cnt=(tcx.target-55)*1000	:	ty.cnt=(tcy.target-30)*1000
+		if eh=5:	tx.cnt=(tcx.target+50)*1000	:	ty.cnt=(tcy.target+7)*1000
+		if eh=6:	tx.cnt=(tcx.target-55)*1000	:	ty.cnt=(tcy.target+7)*1000
+		
+		txv.cnt=0 : tyv.cnt=0			;移動方向
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=3
+		hitchklenghy.cnt=3
+
+		//中心座標用加算変数
+		tcplusx.cnt=2
+		tcplusy.cnt=2
+		
+		if eh=6 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+	return
+*uzudanmak
+	if mutekif=1:return
+	
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		tf.cnt=1										;フラグオン
+		ts.cnt=10
+		if type=0:ts.cnt=10
+		if type=1:ts.cnt=7	
+		tc.cnt=255										;色
+		eh2.cnt=(eh-1)*30+(frame¥60) : if eh2.cnt>359 : eh2.cnt-=360
+		if ts.target=12:tx.cnt=(tcx.target)*1000 :ty.cnt=(tcy.target)*1000	;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/spd : tyv.cnt=sina(eh2.cnt)/spd
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=3
+		hitchklenghy.cnt=3
+
+		//中心座標用加算変数
+		tcplusx.cnt=2
+		tcplusy.cnt=2
+		
+		if eh=12 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+	return
+	
+*object_move
+//----------------------------オブジェクト移動
+	
+		sonzai=0
+	repeat tmax
+		if tf.cnt<1 :continue						;存在する弾だけ
+		sonzai+=1
+		
+		tx.cnt+=txv.cnt : ty.cnt+=tyv.cnt			;移動処理
+		tx2.cnt=tx.cnt/1000 : ty2.cnt=ty.cnt/1000	;表示用座標を求める
+
+		;当たり判定用中心座標↓
+		tcx.cnt=tx2.cnt+tcplusx.cnt
+		tcy.cnt=ty2.cnt+tcplusy.cnt
+		
+		if (tx2.cnt>355)|(tx2.cnt<-64)|(ty2.cnt<-64)|(ty2.cnt>440){
+			
+				tf(cnt)=0
+				ts(cnt)=0
+				objtimek.cnt=0
+				txv.cnt=0
+				tyv.cnt=0
+				continue
+		
+		}
+										;画面外なら消す
+		pos tx2.cnt-4,ty2.cnt-4
+		
+//----------------------------敵１の処理
+//オブジェクトフレームに＋１する。
+//50〜150フレームの間に１発弾を撃つ
+//dis.cnt=1だったら、当たり判定をマイナスにして
+//カウントプログラムで消滅画像表示表示
+//アイテムフラグを立て,当たり判定を設定する
+		if ts.cnt=1{
+			if dis.cnt=0{
+				objtimek.cnt+=1
+				gmode 2,32,32
+				gcopy 4,0,0,32,32
+				if objtimek.cnt<=150&objtimek.cnt>=100{
+					if objtimek.cnt<=100+0*1&objtimek.cnt>=100{
+						target=cnt
+						gosub *put_enemyshot1
+						target=0
+						objtimek.cnt=0
+					}
+				}
+			}else{
+				//当たり判定の範囲
+				hitchklenghx.cnt=-1000
+				hitchklenghy.cnt=-1000
+			
+				//中心座標用加算変数
+				tcplusx.cnt=-1000
+				tcplusy.cnt=-1000
+				
+				if dis.cnt=1{
+					target=cnt
+					gosub *put_item
+					target=0
+					dis.cnt=2
+				}
+				objtimek.cnt+=1
+				
+				if objtimek.cnt>=5:objtimek.cnt=0:objtimek2.cnt+=1
+				objtimek3.cnt=objtimek2.cnt*32
+				gmode 2,32,32
+				gcopy 4,objtimek3.cnt,0,32,32
+				if objtimek2.cnt>9{
+					objtimek.cnt=0:objtimek2.cnt=0:objtimek3.cnt=0
+					ts.cnt=0:dis.cnt=0
+					txv.cnt=0 : tyv.cnt=0
+				}				
+			}				
+		}
+//----------------------------敵２の処理
+//オブジェクトフレームに＋１する。
+//50〜150フレームの間に2発弾幕を撃つ
+//dis.cnt=1だったら、当たり判定をマイナスにして
+//カウントプログラムで消滅画像表示表示
+//アイテムフラグを立て,当たり判定を設定する
+		if ts.cnt=5{
+			if dis.cnt=0{
+				objtimek.cnt+=1
+				gmode 2,32,32
+				gcopy 4,0,31,31,31
+				if objtimek.cnt<=150&objtimek.cnt>=50{
+					if objtimek.cnt<=50+1*30&objtimek.cnt>=50{
+						target=cnt
+						if objtimek.cnt¥30=1:gosub *endanmak
+						target=0
+					}
+				}
+				if objtimek.cnt=50{
+					eh2.cnt=270
+					txv.cnt=cosa(eh2.cnt)/5 : tyv.cnt=sina(eh2.cnt)/5
+				}
+					
+			}else{
+				//当たり判定の範囲
+				hitchklenghx.cnt=-1000
+				hitchklenghy.cnt=-1000
+			
+				//中心座標用加算変数
+				tcplusx.cnt=-1000
+				tcplusy.cnt=-1000
+				
+				if dis.cnt=1{
+					target=cnt
+					gosub *put_item
+					target=0
+					dis.cnt=2
+				}
+				objtimek.cnt+=1
+				
+				if objtimek.cnt>=5:objtimek.cnt=0:objtimek2.cnt+=1
+				objtimek3.cnt=objtimek2.cnt*32
+				gmode 2,32,32
+				gcopy 4,objtimek3.cnt,31,31,31
+				if objtimek2.cnt>9{
+					objtimek.cnt=0:objtimek2.cnt=0:objtimek3.cnt=0
+					ts.cnt=0:dis.cnt=0
+					
+				}
+				
+			}
+				
+		}
+//----------------------------敵３の処理
+//オブジェクトフレームに＋１する。
+//50〜150フレームの間に１発弾を撃つ
+//dis.cnt=1だったら、当たり判定をマイナスにして
+//カウントプログラムで消滅画像表示表示
+//アイテムフラグを立て,当たり判定を設定する
+		if ts.cnt=9{
+			if dis.cnt=0{
+				objtimek.cnt+=1
+				gmode 2,35,30
+				gcopy 4,0,62,35,30
+				if objtimek.cnt<=150&objtimek.cnt>=20{
+					eh2.cnt+=20
+					txv.cnt=cosa(eh2.cnt)/5 : tyv.cnt=sina(eh2.cnt)/5
+					if objtimek.cnt<=20+0*1&objtimek.cnt>=20{
+						target=cnt
+						gosub *danmak3
+						target=0
+						objtimek.cnt=0
+					}
+				}
+			}else{
+				if dis.cnt=1{
+					target=cnt
+					gosub *put_item
+					target=0
+					dis.cnt=2
+				}
+				objtimek.cnt+=1
+				
+				//当たり判定の範囲
+				hitchklenghx.cnt=-1000
+				hitchklenghy.cnt=-1000
+			
+				//中心座標用加算変数
+				tcplusx.cnt=-1000
+				tcplusy.cnt=-1000
+
+				if objtimek.cnt>=5:objtimek.cnt=0:objtimek2.cnt+=1
+				objtimek3.cnt=objtimek2.cnt*32
+				gmode 2,32,32
+				gcopy 4,objtimek3.cnt,0,32,32
+				if objtimek2.cnt>9{
+					objtimek.cnt=0:objtimek2.cnt=0:objtimek3.cnt=0
+					ts.cnt=0:dis.cnt=0
+
+				}				
+			}				
+		}
+//----------------------------中ボス１の処理
+
+		if ts.cnt=6{
+				
+			if dis.cnt=0{
+				objtimek.cnt+=1
+				gmode 2,64,64
+				gcopy 7,0,0,64,64
+								
+				if objtimek.cnt<=150&objtimek.cnt>=50{
+					if objtimek.cnt<=50+2*30&objtimek.cnt>=50{
+						eh2.cnt=180
+						txv.cnt=cosa(eh2.cnt)/5 : tyv.cnt=sina(eh2.cnt)/5
+						target=cnt
+						if objtimek.cnt¥30=1:gosub *endanmak
+						target=0
+					}
+				}
+				if objtimek.cnt<=650&objtimek.cnt>=150{
+					if objtimek.cnt<=150+20*25&objtimek.cnt>=150{
+						eh2.cnt=0
+						txv.cnt=0 : tyv.cnt=0
+						target=cnt
+						if objtimek.cnt¥25=1:gosub *danmak2
+						target=0
+					}
+				}
+				if objtimek.cnt<=700&objtimek.cnt>=650{
+					if objtimek.cnt<=650+20*25&objtimek.cnt>=650{
+						eh2.cnt=0
+						txv.cnt=cosa(eh2.cnt)/5 : tyv.cnt=sina(eh2.cnt)/5
+						target=cnt
+						if objtimek.cnt¥25=1:gosub *danmak2
+						target=0
+						target=cnt
+						if objtimek.cnt¥30=1:gosub *endanmak
+						target=0
+					}
+				}
+				if objtimek.cnt>=700:objtimek.cnt=0	
+				}else{
+
+					objtimek.cnt+=1
+					//当たり判定の範囲
+					hitchklenghx.cnt=-1000
+					hitchklenghy.cnt=-1000
+				
+					//中心座標用加算変数
+					tcplusx.cnt=-1000
+					tcplusy.cnt=-1000
+	
+					if objtimek.cnt>=5:objtimek.cnt=0:objtimek2.cnt+=1
+					objtimek3.cnt=objtimek2.cnt*64
+					gmode 2,64,64
+					gcopy 7,objtimek3.cnt,0,64,64
+					if objtimek2.cnt>9{
+						objtimek.cnt=0:objtimek2.cnt=0:objtimek3.cnt=0
+						ts.cnt=0:dis.cnt=0
+						//当たり判定の範囲
+						hitchklenghx.cnt=20
+						hitchklenghy.cnt=20
+					
+						//中心座標用加算変数
+						tcplusx.cnt=0
+						tcplusy.cnt=9
+						gook=1
+					}
+				}
+			}
+//----------------------------大ボス１
+	if ts.cnt=12{
+		if dis.cnt=0{
+			objtimek.cnt+=1
+			gmode 2
+			gcopy 9,0,0,128,64
+
+			if objtimek.cnt=249{
+				dmplay 100,3
+			}
+			if objtimek.cnt<=850&objtimek.cnt>=100{
+				tx.cnt-=txv.cnt:ty.cnt-=tyv.cnt
+			}
+			if objtimek.cnt<=860&objtimek.cnt>=850{
+				eh2.cnt=180
+				txv.cnt=cosa(eh2.cnt)/2 : tyv.cnt=sina(eh2.cnt)/2
+			}
+			if objtimek.cnt=860{
+				ds_play 10
+			}
+			if objtimek.cnt<=1000&objtimek.cnt>=860{
+				if objtimek.cnt<=1000+10*10&objtimek.cnt>=860{
+						tx.cnt-=txv.cnt:ty.cnt-=tyv.cnt
+						target=cnt
+						if objtimek.cnt¥10=0:gosub *danmak4
+						target=0
+					}				
+			}
+			if objtimek.cnt<=1010&objtimek.cnt>=1000{
+				eh2.cnt=0
+				txv.cnt=cosa(eh2.cnt)/2 : tyv.cnt=sina(eh2.cnt)/2
+			}
+			if objtimek.cnt<=300&objtimek.cnt>=250{
+				if objtimek.cnt<=250+4*6&objtimek.cnt>=250{
+						target=cnt
+						if objtimek.cnt¥6=0:gosub *endanmak
+						target=0
+					}
+			}
+			if objtimek.cnt<=400&objtimek.cnt>=300{
+				if objtimek.cnt<=400+20*10&objtimek.cnt>=300{
+						target=cnt
+						if objtimek.cnt¥10=0:gosub *danmak2
+						target=0
+					}
+			}
+			if objtimek.cnt<=500&objtimek.cnt>=400{
+				if objtimek.cnt<=500+10*10&objtimek.cnt>=400{
+						target=cnt
+						ds_play 10
+						if objtimek.cnt¥10=0:gosub *danmak4
+						target=0
+					}
+			}
+			if objtimek.cnt<=750&objtimek.cnt>=550{
+				if objtimek.cnt<=750+20*10&objtimek.cnt>=550{
+						target=cnt:spd=5:type=0			;スピード設定わすれずに
+						if objtimek.cnt¥10=0:gosub *uzudanmak
+						target=0:spd=0:type=0
+					}
+			}
+			if objtimek.cnt<=850&objtimek.cnt>=750{
+				if objtimek.cnt<=850+10*5&objtimek.cnt>=750{
+						target=cnt:spd=2:type=1			;スピード設定&タイプ設定わすれずに
+						if objtimek.cnt¥5=0:gosub *uzudanmak
+						target=0:spd=0:type=0
+					}
+			}
+			if objtimek.cnt>=1010:objtimek.cnt=250
+		}else{
+			objtimek.cnt+=1
+					//当たり判定の範囲
+					hitchklenghx.cnt=-1000
+					hitchklenghy.cnt=-1000
+				
+					//中心座標用加算変数
+					tcplusx.cnt=-1000
+					tcplusy.cnt=-1000
+
+					eh2.cnt=90
+					txv.cnt=cosa(eh2.cnt)/5 : tyv.cnt=sina(eh2.cnt)/5
+	
+					if objtimek.cnt>=5:objtimek.cnt=0:objtimek2.cnt+=1
+					objtimek3.cnt=objtimek2.cnt*64
+					gmode 2,64,64
+					gcopy 7,objtimek3.cnt,0,64,64
+					pos tx2.cnt-4,ty2.cnt-4:gcopy 7,objtimek3.cnt,0,64,64
+					pos tx2.cnt-20,ty2.cnt-4:gcopy 7,objtimek3.cnt,0,64,64
+					pos tx2.cnt+30,ty2.cnt-40:gcopy 7,objtimek3.cnt,0,64,64
+					pos tx2.cnt-10,ty2.cnt+20:gcopy 7,objtimek3.cnt,0,64,64
+					if objtimek2.cnt>9{
+						objtimek.cnt=0:objtimek2.cnt=0:objtimek3.cnt=0
+						ts.cnt=0:dis.cnt=0
+						//当たり判定の範囲
+						hitchklenghx.cnt=20
+						hitchklenghy.cnt=20
+					
+						//中心座標用加算変数
+						tcplusx.cnt=0
+						tcplusy.cnt=9
+						gook=1
+					}
+		}
+	}
+		
+//----------------------------弾の処理
+//オブジェクトフレームに＋１する。
+//dis.cnt=1だったら、当たり判定をマイナスにして
+//移動量を初期化。カウントプログラムで消滅画像表示
+//表示後、フラグを初期化して消滅
+		if ts.cnt=2|ts.cnt=7|ts.cnt=10|ts.cnt=13{
+			if dis.cnt=0{
+				objtimek.cnt+=1
+				gmode 2
+				if ts.cnt=2:gcopy 5,2,0,14,14
+				if ts.cnt=7:gcopy 5,2,14,13,13
+				if ts.cnt=10:gcopy 5,2,62,13,13
+				if ts.cnt=13{
+					gcopy 5,2,61,13,13
+					if objtimek.cnt<=60&objtimek.cnt>=50{
+						target=cnt
+						//敵の座標からの距離を計測
+						kyorx=tx2.target-mx
+						kyory=ty2.target-my
+						if tx2.target>mx:hantenx=1:else:hantenx=0
+						if ty2.target>my:hanteny=1:else:hanteny=0
+					
+						//距離の絶対値をとる(0だったら＋１する）
+						kyory=abs(kyory)
+						kyorx=abs(kyorx)
+						if kyorx=0 :kyorx+=1
+						if kyory=0 :kyory+=1
+					
+						//座標から自分のいる座標の角度を計算
+						zahyo=double(kyory)/double(kyorx)
+						a=atan(zahyo)
+						b=a*180/3.1415926535897932384626433832795
+						b=int(b)
+					
+						if hantenx=1:b=180-b
+						if hanteny=1:b=360-b
+						if b>=360:b=2
+						if b<=0:b=2
+
+						eh2.cnt=b
+						txv.cnt=cosa(eh2.cnt)/2 : tyv.cnt=sina(eh2.cnt)/2
+
+					}
+				}
+			}else{
+				objtimek.cnt+=1
+				//当たり判定の範囲
+				hitchklenghx.cnt=-1000
+				hitchklenghy.cnt=-1000
+			
+				//中心座標用加算変数
+				tcplusx.cnt=-1000
+				tcplusy.cnt=-1000
+
+				txv.cnt=0:tyv.cnt=0
+
+				if objtimek.cnt>=5:objtimek.cnt=0:objtimek2.cnt+=1
+				objtimek3.cnt=objtimek2.cnt*13
+				if objtimek2.cnt>2{
+					objtimek.cnt=0:objtimek2.cnt=0:objtimek3.cnt=0
+					tf.cnt=0:ts.cnt=0:dis.cnt=0
+					txv.cnt=0
+					tyv.cnt=0
+					
+				}
+				gmode 2
+				if ts.cnt=2:gcopy 5,15+objtimek3.cnt,0,13,13
+				if ts.cnt=7:gcopy 5,15+objtimek3.cnt,14,13,13
+				if ts.cnt=10:gcopy 5,15+objtimek3.cnt,14,13,13
+				if ts.cnt=13:gcopy 5,15+objtimek3.cnt,62,13,13
+			}
+		}
+
+//----------------------------エフェクトの処理
+//オブジェクトフレームに＋１する。
+//50フレームでキャラ表示
+//100フレームで無敵解除
+		if ts.cnt=3{
+			objtimek.cnt+=1
+			//パーティクルをつかう
+			gmode 5,,,255
+			d3setcam 0,0,450,0,0,0
+			d3particle 1,-ty2.cnt+220,-tx2.cnt+220,0,10
+				
+			if objtimek.cnt=50{
+				mx=150:my=350
+				mutekif=2
+				objtimek.cnt=0:objtimek2.cnt=0:objtimek3.cnt=0
+				tf.cnt=0:ts.cnt=0
+				txv.cnt=0
+				tyv.cnt=0
+			}
+		}
+//----------------------------かすりエフェクトの処理
+//オブジェクトフレームに＋１する。
+//
+		if ts.cnt=8{
+			objtimek.cnt+=1
+			//パーティクルをつかう
+			gmode 5,,,150
+			d3setcam 0,0,450,0,0,0
+			d3particle 1,-ty2.cnt+220,-tx2.cnt+220,0,4
+			gmode 2,,
+				
+			if objtimek.cnt=20{
+				objtimek.cnt=0:objtimek2.cnt=0:objtimek3.cnt=0
+				tf.cnt=0:ts.cnt=0
+				txv.cnt=0
+				tyv.cnt=0
+			}
+		}
+//----------------------------ダメージエフェクトの処理
+//オブジェクトフレームに＋１する。
+//
+		if ts.cnt=15{
+			objtimek.cnt+=1
+			//パーティクルをつかう
+			gmode 5,,,150
+			d3setcam 0,0,450,0,0,0
+			d3particle 2,-ty2.cnt+220,-tx2.cnt+220,0,10
+			gmode 2,,
+				
+			if objtimek.cnt=10{
+				objtimek.cnt=0:objtimek2.cnt=0:objtimek3.cnt=0
+				tf.cnt=0:ts.cnt=0
+				txv.cnt=0
+				tyv.cnt=0
+			}
+		}
+//----------------------------雲エフェクト
+//オブジェクトフレームに＋１する。
+//
+		if ts.cnt=11{
+			objtimek.cnt+=1
+
+			color 0,0,0
+			gmode 4,,,100
+			gcopy 8,0,229,69,34
+			gmode 2,,
+				
+		}
+//----------------------------アイテムの処理
+//オブジェクトフレームに＋１する。
+//dis.cnt=1なら、当たり判定をマイナス
+//にして消滅させる。1〜10まで減速しつつ上方向
+//11からは下方向へ移動
+		if ts.cnt=4{
+			if dis.cnt=0{
+				objtimek.cnt+=1
+				gmode 2,12,18
+				gcopy 5,54,0,12,18
+				if objtimek.cnt<=10&objtimek.cnt>=1{
+					eh2.cnt=270
+					txv.cnt=cosa(eh2.cnt)/objtimek.cnt
+					tyv.cnt=sina(eh2.cnt)/objtimek.cnt
+				}
+				if objtimek.cnt>11{
+					eh2.cnt=90
+					txv.cnt=cosa(eh2.cnt)/2 : tyv.cnt=sina(eh2.cnt)/2
+				}
+					
+			}else{
+				//当たり判定の範囲
+				hitchklenghx.cnt=-1000
+				hitchklenghy.cnt=-1000
+			
+				//中心座標用加算変数
+				tcplusx.cnt=-1000
+				tcplusy.cnt=-1000
+
+				objtimek.cnt=0:objtimek2.cnt=0:objtimek3.cnt=0
+				ts.cnt=0:dis.cnt=0
+			}
+		}
+
+	loop
+//----------------------------ショット移動
+	repeat maxdansu
+		if shotf.cnt<1 :continue						;存在する弾だけ
+		if shotf.cnt=1{
+			shoty.cnt+=shotyv.cnt
+			shotx.cnt+=shotxv.cnt
+			shotx2.cnt=shotx.cnt/1000
+			shoty2.cnt=shoty.cnt/1000
+			shotcx.cnt=shotx2.cnt+1
+			shotcy.cnt=shoty2.cnt+11
+			
+			pos shotx2.cnt,shoty2.cnt
+			gmode 2,2,22:gcopy 5,0,0,2,22
+			
+			if (shotx2.cnt>355)|(shotx2.cnt<-50)|(shoty2.cnt<-50)|(shoty2.cnt>500) {
+				shotf.cnt=0
+				continue
+			}
+			if shotdis.cnt=1{
+				shotf.cnt=0
+				shotdis.cnt=0
+				shotx2.cnt=0
+				shoty2.cnt=0
+				shotcx.cnt=0
+				shotcy.cnt=0
+			}
+		}
+//----------------------------もれ太スパーク
+		if shotf.cnt=2{
+			shottimek.cnt+=1
+			kaiten+=1
+			shoty.cnt+=shotyv.cnt
+			shotx.cnt+=shotxv.cnt
+			shotx2.cnt=shotx.cnt/1000
+			shoty2.cnt=shoty.cnt/1000
+			shotcx.cnt=shotx2.cnt+1
+			shotcy.cnt=shoty2.cnt+11
+
+			if shottimek.cnt<=10&shottimek.cnt>=0{
+				
+				pos shotx2.cnt,shoty2.cnt
+				gmode 2,34,34:grotate 5,0,27,kaiten,34,34
+				
+			}
+			if shottimek.cnt<=50&shottimek.cnt>=11{
+
+				shoty.cnt-=shotyv.cnt
+				shotx.cnt-=shotxv.cnt
+				pos shotx2.cnt,shoty2.cnt
+				gmode 2,34,34:grotate 5,0,27,kaiten,34,34
+				target=cnt
+				gosub *spark_on
+				target=0
+				
+			}
+			if shottimek.cnt<=100&shottimek.cnt>=50{
+				repeat tmax
+					if tf.cnt<1:continue
+					if ts.cnt=1|ts.cnt=6|ts.cnt=5|ts.cnt=9|ts.cnt=12{
+						targets=cnt
+						break
+					}
+					
+				loop
+				
+			
+				//----------------------------自機のいる角度を計算
+				//敵の座標からの距離を計測
+				kyorx=shotx2.cnt-tx2.targets
+				kyory=shoty2.cnt-ty2.targets
+				if shotx2.cnt>tx2.targets:hantenx=1:else:hantenx=0
+				if shoty2.cnt>ty2.targets:hanteny=1:else:hanteny=0
+			
+				//距離の絶対値をとる(0だったら＋１する）
+				kyory=abs(kyory)
+				kyorx=abs(kyorx)
+				if kyorx=0 :kyorx+=1
+				if kyory=0 :kyory+=1
+			
+				//座標から自分のいる座標の角度を計算
+				zahyo=double(kyory)/double(kyorx)
+				a=atan(zahyo)
+				b=a*180/3.1415926535897932384626433832795
+				b=int(b)
+			
+				if hantenx=1:b=180-b
+				if hanteny=1:b=360-b
+			//----------------------------ここまで
+				if b>=360:b=2
+				if b<=0:b=2
+				eh3.cnt=b
+				shotxv.cnt=cosa(eh3.cnt)*sp : shotyv.cnt=sina(eh3.cnt)*sp
+				
+				pos shotx2.cnt,shoty2.cnt
+				gmode 2,34,34:grotate 5,0,27,kaiten,34,34
+				target=cnt
+				gosub *spark_on
+				target=0
+			}
+			if shottimek.cnt>=100{
+				pos shotx2.cnt,shoty2.cnt
+				gmode 2,34,34:grotate 5,0,27,kaiten,34,34
+			}
+			if (shotx2.cnt>440)|(shotx2.cnt<-150)|(shoty2.cnt<-150)|(shoty2.cnt>550) {
+				shotf.cnt=0
+				shotdis.cnt=0
+				shotx2.cnt=0
+				shoty2.cnt=0
+				shotcx.cnt=0
+				shotcy.cnt=0
+				shotxv.cnt=0 : shotyv.cnt=0
+				eh3.cnt=0
+				continue
+			}
+		}
+	loop
+//------------------------------ここまで
+
+	return
+*hitchk
+
+	if mutekif=1:return
+	yhit=0:xhit=0
+	ykasuri=0:xkasuri=0
+
+	repeat tmax
+	if tf.cnt<1:continue
+	if ts.cnt=3:continue
+	
+		yhit=0:xhit=0
+		ykasuri=0:xkasuri=0
+
+		if drawhantei=1{
+			color 255,0,0
+			boxf tcx.cnt,tcy.cnt,tcx.cnt+hitchklenghx.cnt,tcy.cnt+hitchklenghy.cnt
+			boxf tcx.cnt,tcy.cnt,tcx.cnt+hitchklenghx.cnt,tcy.cnt-hitchklenghy.cnt
+			boxf tcx.cnt,tcy.cnt,tcx.cnt-hitchklenghx.cnt,tcy.cnt+hitchklenghy.cnt
+			boxf tcx.cnt,tcy.cnt,tcx.cnt-hitchklenghx.cnt,tcy.cnt+hitchklenghy.cnt
+		}
+
+		
+		//自機と敵弾の判定
+		kyoriy=tcy.cnt-mycharcentery
+		kyorix=tcx.cnt-mycharcenterx
+
+		kyoriy=abs(kyoriy)
+		kyorix=abs(kyorix)
+
+		if kyoriy<mycharuppery+hitchklenghy.cnt:yhit=1
+		if kyorix<mycharRightx+hitchklenghx.cnt:xhit=1
+		if kyoriy<kasury+hitchklenghy.cnt:ykasuri=1
+		if kyorix<kasurx+hitchklenghx.cnt:xkasuri=1
+
+		if ykasuri+xkasuri=2{
+			if ts.cnt=2|ts.cnt=7|ts.cnt=10|ts.cnt=13{
+				score+=1:kasurikaunter+=1
+				gosub *kasuri_on
+			}
+		}
+		
+		if yhit+xhit=2{
+
+			if ts.cnt=1|ts.cnt=5|ts.cnt=6|ts.cnt=9{
+				if mutekif>=2:break
+				dis.cnt=1		
+				gosub *mycharhit	;敵だったらヒット
+			}
+			if ts.cnt=2|ts.cnt=7|ts.cnt=10|ts.cnt=13{
+				if mutekif>=2:break
+				gosub *mycharhit	;弾だったらヒット
+			}
+			if ts.cnt=4{			;アイテム取得
+				shotpower+=1:score+=100
+				dis.cnt=1:ds_play 5
+			}	
+		}
+//----------------------------ショットと敵の判定
+	if ts.cnt=1|ts.cnt=5|ts.cnt=6|ts.cnt=9|ts.cnt=12{
+		target=cnt
+		repeat maxdansu
+
+			if shotf.cnt<1:continue
+			
+			yhit2=0:xhit2=0
+			
+			kyoriy2=tcy.target-shotcy.cnt
+			kyorix2=tcx.target-shotcx.cnt
+
+			kyoriy2=abs(kyoriy2)
+			kyorix2=abs(kyorix2)
+
+			if kyoriy2<ShotHity+hitchklenghy.target:yhit2=1
+			if kyorix2<ShotHitx+hitchklenghx.target:xhit2=1
+			
+			if yhit2+xhit2=2{
+				
+				if ts.target=1|ts.target=5|ts.target=9{
+					//当たり判定の範囲
+					hitchklenghx.target=-1000
+					hitchklenghy.target=-1000
+				
+					//中心座標用加算変数
+					tcplusx.target=-1000
+					tcplusy.target=-1000
+				
+					ds_play 2 
+					score+=100
+					dis.target=1:shotdis.cnt=1
+				}
+					
+				if ts.target=6{
+					score+=100:shotdis.cnt=1
+					chp-=1:ds_play 2
+					pos tx2.target-4,ty2.target-4
+					gcopy 7,63,0,64,64
+					
+					if chp<=0:dis.target=1
+				}
+				if ts.target=12{
+					score+=100:shotdis.cnt=1
+					bhp-=1
+					ds_play 2
+
+					gosub *damage_on
+					
+					
+					if bhp<=0:dis.target=1:gosub *bosshit
+				}
+			}
+		loop	
+	}
+	loop
+
+
+
+	return
+*mycharhit
+
+	ds_play 3
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2.cnt=(eh-1)*10+(pt*5) : if eh2>359 : eh2-=360	;発射角度を求める
+		tf.cnt=1										;フラグオン
+		ts.cnt=3
+	
+		//当たり判定の範囲
+		hitchklenghx.cnt=0
+		hitchklenghy.cnt=0
+
+		//中心座標用加算変数
+		tcplusx.cnt=0
+		tcplusy.cnt=0
+		
+		tc.cnt=255										;色
+		tx.cnt=(mx+20)*1000 :ty.cnt=my*1000				;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/3 : tyv.cnt=sina(eh2.cnt)/3	;移動方向
+		if eh=36 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+	life-=1
+	mx=-1000:my=-1000
+	mutekif=1
+
+	repeat tmax
+		if tf.cnt<1:continue
+		if ts.cnt=2|ts.cnt=7|ts.cnt=10|ts.cnt=13|dis.cnt=1
+	loop
+
+	if life<=0:goto *gameov
+
+	return
+*kasuri_on
+	yobareta3+=1
+	if yobareta3>=10:yobareta3=0
+	if yobareta3>=2:return
+
+	ds_play 6
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		rand=rnd(360)
+		eh2.cnt=rand : if eh2>359 : eh2-=360	;発射角度を求める
+		tf.cnt=1										;フラグオン
+		ts.cnt=8
+	
+		//当たり判定の範囲
+		hitchklenghx.cnt=0
+		hitchklenghy.cnt=0
+
+		//中心座標用加算変数
+		tcplusx.cnt=0
+		tcplusy.cnt=0
+		
+		tc.cnt=255										;色
+		tx.cnt=(mx+20)*1000 :ty.cnt=my*1000				;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/3 : tyv.cnt=sina(eh2.cnt)/3	;移動方向
+		if eh=1 : eh=0 : break							;36発発射してループを抜ける
+	loop
+	
+	return
+*spark_on
+
+	yobareta+=1
+	if yobareta>=10:yobareta=0
+	if yobareta>=2:return
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		rand=rnd(360)
+		eh2.cnt=rand : if eh2>359 : eh2-=360	;発射角度を求める
+		tf.cnt=1										;フラグオン
+		ts.cnt=8
+	
+		//当たり判定の範囲
+		hitchklenghx.cnt=0
+		hitchklenghy.cnt=0
+
+		//中心座標用加算変数
+		tcplusx.cnt=0
+		tcplusy.cnt=0
+		
+		tc.cnt=255										;色
+		tx.cnt=(shotx2.target+20)*1000 :ty.cnt=shoty2.target*1000				;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/3 : tyv.cnt=sina(eh2.cnt)/3	;移動方向
+		if eh=1 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+	
+
+	return
+*damage_on
+
+	yobareta2+=1
+	if yobareta2>=5:yobareta2=0
+	if yobareta2>=2:return
+
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		rand=rnd(360)
+		eh2.cnt=rand : if eh2>359 : eh2-=360	;発射角度を求める
+		tf.cnt=1										;フラグオン
+		ts.cnt=15
+	
+		//当たり判定の範囲
+		hitchklenghx.cnt=0
+		hitchklenghy.cnt=0
+
+		//中心座標用加算変数
+		tcplusx.cnt=0
+		tcplusy.cnt=0
+		
+		tc.cnt=255										;色
+		tx.cnt=(tcx.target)*1000 :ty.cnt=tcy.target*1000				;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/2 : tyv.cnt=sina(eh2.cnt)/2	;移動方向
+		if eh=1 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+	
+
+	return
+*bosshit
+
+	
+	repeat tmax
+		if tf.cnt>0 :continue							;空きフラグを探す
+		eh+
+		eh2.cnt=(eh-1)*10+(pt*5) : if eh2>359 : eh2-=360	;発射角度を求める
+		tf.cnt=1										;フラグオン
+		ts.cnt=3
+	
+		//当たり判定の範囲
+		hitchklenghx.cnt=0
+		hitchklenghy.cnt=0
+
+		//中心座標用加算変数
+		tcplusx.cnt=0
+		tcplusy.cnt=0
+		
+		tc.cnt=255										;色
+		tx.cnt=(tcx.target+20)*1000 :ty.cnt=tcy.target*1000				;位置に弾発生(1000倍）
+		txv.cnt=cosa(eh2.cnt)/3 : tyv.cnt=sina(eh2.cnt)/3	;移動方向
+		if eh=36 : eh=0 : break							;36発発射してループを抜ける
+	loop
+
+	
+	repeat tmax
+		if tf.cnt<1:continue
+		if ts.cnt=2|ts.cnt=7|ts.cnt=10|ts.cnt=13|dis.cnt=1
+	loop
+
+
+	return
+*sleeping
+
+	noteget par,1
+	par=int(par)
+
+	if kauntpar>=par{
+	kauntpar=0:turn+=1
+	}
+
+	kauntpar+=1
+	return
+*teisi
+
+	if gook=1:turn+=1:gook=0
+	return
+*disall
+	repeat tmax
+		if tf.cnt<1:continue
+		if ts.cnt=2|ts.cnt=7|ts.cnt=10|ts.cnt=13{
+			
+			tf.cnt=0 
+			ts.cnt=0
+			dis.cnt=0
+						
+		//当たり判定の範囲
+		hitchklenghx.cnt=0
+		hitchklenghy.cnt=0
+
+		//中心座標用加算変数
+		tcplusx.cnt=-1000
+		tcplusy.cnt=-1000
+		}
+	
+		
+	loop
+
+	return
+*gameov
+	cls 
+	color 0,0,0
+	mes "ゲームおーばー"
+
+	if replayf=1:button "戻る",*top:stop
+	mes "リプレイを保存しますか？"
+	button "ＯＫ",*ok:button "NO",*no
+
+	stop
+*ok
+	mes "リプレイの名前を入れてください"
+	input replayname:button "保存",*hozon
+	stop
+*hozon
+	objprm 3,replayname
+	dialog replayname
+	bsave "replay/"+replayname+".rep",replay
+*no
+	end
+*replayload
+	cls
+	color 0,0,0
+	
+	dirlist clent,"replay/*.rep"
+	notesel clent
+	repeat notemax
+
+		noteget filename.cnt,cnt
+		mes filename.cnt
+
+	loop
+
+	objsize 100,32:combox choice,,clent
+	button "ロードする",*replayload2
+	stop
+*replayload2
+	bload "replay/"+filename.choice,replay
+
+	replayf=1
+	goto *Stagestart2
+*endo
+	end
+	

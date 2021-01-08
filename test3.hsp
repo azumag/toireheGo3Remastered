@@ -1,0 +1,25 @@
+	screen 0,300,300,0
+
+mx=100
+my=100
+
+
+
+*main
+rad=atan(mx-mousex,my-mousey)
+x=sin(rad)*2:y=cos(rad)*2
+
+	redraw 2
+
+	color 255,255,255
+	boxf 0,0,300,300
+
+	color 0,0,0
+	pos mx,my:mes "*"
+	mx+=x
+	my+=y
+
+	redraw 1
+	await 1
+
+	goto *main

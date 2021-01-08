@@ -1,0 +1,6 @@
+enemy2,100,0
+sleep,200
+midle1,300,0,150
+stop
+enemy2,100,0
+stop

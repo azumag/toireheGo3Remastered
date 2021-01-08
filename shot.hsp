@@ -1,0 +1,70 @@
+*shot
+
+	if utta=1:uttakaunter+=1
+	if uttakaunter>=5:utta=0:uttakaunter=0
+	if utta=1:return
+	
+
+	repeat dansu
+		gdansu=cnt
+		
+	repeat tmax
+			
+		if tf.cnt>0 :continue									;空きフラグを探す
+		eh+
+
+
+		//発射位置を動かし、移動方向を設定
+		if gdansu\2=0{
+			shotxmove=14
+			eh2=eh2+2*gdansu
+		}else{
+			shotxmove=0
+			eh2=eh2-2*gdansu
+		}
+
+		if gdansu=0:eh2=270									
+		if gdansu=1:eh2=270	
+		if gdansu=2:shotxmove=7:eh2=270
+		if gdansu=3:eh2=268
+		if gdansu=4:eh2=272
+		if gdansu=5:eh2=266
+		if gdansu=6:eh2=274
+		if gdansu=7:eh2=264
+		if gdansu=8:eh2=274
+		if gdansu=9:eh2=262
+		if gdansu=10:eh2=276
+		if gdansu=11:eh2=260
+		if gdansu=12:eh2=278
+		if gdansu=13:eh2=258
+		if gdansu=14:eh2=280
+		if gdansu=15:eh2=256
+
+
+
+			
+		
+		tf.cnt=1												;フラグオン
+		ts.cnt=1
+
+		
+		tc.cnt=255												;色
+		tx.cnt=(mx+15+shotxmove)*1000: ty.cnt=my*1000			;位置に弾発生(1000倍）
+		txv.cnt=cosa.eh2*sp : tyv.cnt=sina.eh2*sp				;移動方向
+
+		//当たり判定の範囲
+		hitchklenghx.cnt=2
+		hitchklenghy.cnt=11
+
+		//中心座標用加算変数
+		tcplusx.cnt=-3
+		tcplusy.cnt=7
+		
+		if eh=1 : eh=0 : break									;1発発射してループを抜ける	
+		
+	loop
+		
+	loop
+		
+		utta=1
+	return

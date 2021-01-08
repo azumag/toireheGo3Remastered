@@ -1,0 +1,45 @@
+
+screen 0,300,300,0
+
+ex=100
+ey=100
+
+repeat
+	redraw 2
+
+	color 255,255,255
+	boxf 0,0,400,400
+
+	mx=200
+	my=200
+	
+	color 0,0,0
+	pos ex,ey:mes "*"
+	pos mx,my:mes "A"
+	ex+=houkoux
+	ey+=houkouy
+
+	
+	redraw 1
+	wait 1
+loop
+
+kyorx=int(ex)-mx
+	kyory=int(ey)-my
+	if ex>mx:hantenx=1:else:hantenx=0
+	if ey>my:hanteny=1:else:hanteny=0
+	
+	kyory=abs(kyory)
+	kyorx=abs(kyorx)
+	if kyorx=0 :kyorx+=1
+	if kyory=0 :kyory+=1
+	
+	zahyo=double(kyory)/double(kyorx)
+	a=atan(zahyo)
+	b=a*180/3.1415926535897932384626433832795
+	b=int(b)
+
+	if hantenx=1:b=180-b
+	if hanteny=1:b=360-b
+
+

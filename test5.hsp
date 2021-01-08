@@ -1,0 +1,38 @@
+screen 0,200,200,0
+
+buffer 3,,,
+picload "alltama.bmp"
+tx2=100
+ty2=80
+
+gsel 0
+
+repeat 
+
+	redraw 2
+	color 0,0,0
+	boxf 0,0,200,200
+
+//----------------------------自機のいる角度を計算
+	//敵の座標からの距離を計測
+	kyorx=tx2-mousex
+	kyory=ty2-mousey
+
+
+	//距離の絶対値をとる(0だったら＋１する）
+
+
+	//座標から自分のいる座標の角度を計算
+	//zahyo=double(kyory)/double(kyorx)
+	a=atan(kyory,kyorx)
+
+
+//----------------------------ここまで
+	gmode 2,16,30
+	pos tx2,ty2:grotate 3,2,76,a+1.55,16,30
+
+	redraw 1
+	await 1
+	
+loop
+
